@@ -1,0 +1,12 @@
+language: rust
+rust:
+  - nightly
+
+os:
+  - linux
+  - osx
+
+script:
+  - cargo test
+  - cargo test --release
+  - cargo fmt -- --check
