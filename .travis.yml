@@ -7,6 +7,6 @@ os:
   - osx
 
 script:
-  - cargo test
-  - cargo test --release
+  - cargo test --all-targets
+  - cargo test --all-targets --release
   - cargo fmt -- --check

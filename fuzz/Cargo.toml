@@ -1,0 +1,12 @@
+[package]
+name = "rsync-fuzz"
+version = "0.1.0"
+authors = ["Dropbox Engineering"]
+edition = "2018"
+publish = false
+
+[dependencies]
+fast_rsync = { path = ".." }
+honggfuzz = "0.5.45"
+librsync = { git = "https://github.com/mbrt/librsync-rs", rev = "72ec0998ba2a60866ee0031fb8cea807b2e0128a" }
+rand = { version = "0.7.3", features = ["small_rng"] }
