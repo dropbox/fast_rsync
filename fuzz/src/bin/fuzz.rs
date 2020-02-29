@@ -12,7 +12,7 @@ fn main() {
     let mut base_data = vec![0; MAX_LEN];
     SmallRng::seed_from_u64(0).fill_bytes(&mut base_data);
     let mut out_data = Vec::with_capacity(MAX_OUT);
-    let mut librsync_data = Vec::with_capacity(MAX_OUT);
+    let mut librsync_data = vec![0; MAX_OUT];
     loop {
         fuzz!(|data: &[u8]| {
             if data.len() < 4 {
@@ -24,18 +24,34 @@ fn main() {
                 % MAX_LEN;
             let base_data = &base_data[..base_len];
             out_data.clear();
-            if apply_limited(base_data, delta, &mut out_data, MAX_OUT).is_ok() {
+
+            println!("{:?}", delta);
+            let mut librsync_data_cursor = Cursor::new(&mut librsync_data[..]);
+            let mut librsync_delta_cursor = &delta[..];
+            let fast_rsync_result = apply_limited(base_data, delta, &mut out_data, MAX_OUT);
+            let librsync_result = librsync::Patch::with_buf_read(
+                &mut Cursor::new(base_data),
+                &mut librsync_delta_cursor,
+            )
+            .and_then(|mut job| Ok(std::io::copy(&mut job, &mut librsync_data_cursor)?));
+            if fast_rsync_result.is_ok() {
+                assert!(librsync_result.is_ok());
+                // There must be no unconsumed input.
+                assert_eq!(librsync_delta_cursor, &[]);
                 let res = &out_data[..];
-                librsync_data.clear();
-                librsync::whole::patch(
-                    &mut Cursor::new(base_data),
-                    &mut &delta[..],
-                    &mut librsync_data,
-                )
-                .unwrap();
-                assert_eq!(res, &librsync_data[..]);
+                let librsync_len = librsync_data_cursor.position() as usize;
+                assert_eq!(res, &librsync_data[0..librsync_len]);
+            } else {
+                // librsync can return success if there is still unconsumed
+                // input, but `fast_rsync` considers that an error. Account for
+                // that.
+                assert!(
+                    librsync_result.is_err() || !librsync_delta_cursor.is_empty(),
+                    "{:?}, {:?}",
+                    delta,
+                    librsync_delta_cursor
+                );
             }
-            // only compare in the success case - librsync is annoyingly non-robust against weird input
         });
     }
 }
