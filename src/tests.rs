@@ -146,3 +146,46 @@ fn test_signature_interoperability() {
         }
     }
 }
+
+#[test]
+fn test_apply_errors() {
+    let base_data = b"potato";
+    // sanity check: empty patch
+    apply(
+        base_data,
+        &[114, 115, 2, 54, 0],
+        &mut Vec::new(),
+    ).unwrap();
+    // no magic
+    apply(base_data, &[], &mut Vec::new()).unwrap_err();
+    // wrong magic
+    apply(base_data, &[1, 2, 3, 4], &mut Vec::new()).unwrap_err();
+    // zero-length copy
+    apply(
+        base_data,
+        &[114, 115, 2, 54, crate::consts::RS_OP_COPY_N1_N1, 0, 0, 0],
+        &mut Vec::new(),
+    )
+    .unwrap_err();
+    // copy start out of range
+    apply(
+        base_data,
+        &[114, 115, 2, 54, crate::consts::RS_OP_COPY_N1_N1, 10, 1, 0],
+        &mut Vec::new(),
+    )
+    .unwrap_err();
+    // copy end out of range
+    apply(
+        base_data,
+        &[114, 115, 2, 54, crate::consts::RS_OP_COPY_N1_N1, 0, 10, 0],
+        &mut Vec::new(),
+    )
+    .unwrap_err();
+    // copy end out of range
+    apply(
+        base_data,
+        &[114, 115, 2, 54, crate::consts::RS_OP_COPY_N1_N1, 0, 10, 0],
+        &mut Vec::new(),
+    )
+        .unwrap_err();
+}

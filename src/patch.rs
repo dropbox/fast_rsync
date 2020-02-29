@@ -84,14 +84,12 @@ pub fn apply_limited(
                 if len == 0 {
                     return Err(ApplyError);
                 }
+                if len > limit {
+                    return Err(ApplyError);
+                }
                 let end = offset.checked_add(len).ok_or(ApplyError)?;
-                if end > base.len() {
-                    return Err(ApplyError);
-                }
-                if end - offset > limit {
-                    return Err(ApplyError);
-                }
-                out.extend_from_slice(&base[offset..end]);
+                let subslice = base.get(offset..end).ok_or(ApplyError)?;
+                out.extend_from_slice(subslice);
                 limit -= end - offset;
             }
             _ => return Err(ApplyError),
