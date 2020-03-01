@@ -222,6 +222,6 @@ fn test_apply_errors() {
         apply(base_data, &[114, 115, 2, 54, 0, 1], &mut Vec::new(),)
             .unwrap_err()
             .to_string(),
-        "unexpected data after end command",
+        "unexpected data after end command (len=1)",
     );
 }
