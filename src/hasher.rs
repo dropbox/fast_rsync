@@ -1,4 +1,5 @@
-use std::hash::{BuildHasherDefault, Hasher};
+use crate::crc::Crc;
+use std::hash::{BuildHasherDefault, Hash, Hasher};
 
 /// A very simple hasher designed for hashing `Crc`.
 #[derive(Default)]
@@ -30,3 +31,11 @@ impl Hasher for CrcHasher {
 }
 
 pub type BuildCrcHasher = BuildHasherDefault<CrcHasher>;
+
+impl Hash for Crc {
+    // This `#[inline]` is important for performance without LTO - the derived implementation doesn't always get inlined.
+    #[inline]
+    fn hash<H: Hasher>(&self, hash: &mut H) {
+        hash.write_u32(self.0);
+    }
+}

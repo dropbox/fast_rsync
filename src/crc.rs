@@ -1,6 +1,6 @@
 const CRC_MAGIC: u16 = 31;
 
-#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Crc(pub u32);
 
 impl Crc {
