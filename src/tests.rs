@@ -153,35 +153,75 @@ fn test_apply_errors() {
     // sanity check: empty patch
     apply(base_data, &[114, 115, 2, 54, 0], &mut Vec::new()).unwrap();
     // no magic
-    apply(base_data, &[], &mut Vec::new()).unwrap_err();
+    assert_eq!(
+        apply(base_data, &[], &mut Vec::new())
+            .unwrap_err()
+            .to_string(),
+        "unexpected end of input when reading magic (expected=4, available=0)",
+    );
     // wrong magic
-    apply(base_data, &[1, 2, 3, 4], &mut Vec::new()).unwrap_err();
+    assert_eq!(
+        apply(base_data, &[1, 2, 3, 4], &mut Vec::new())
+            .unwrap_err()
+            .to_string(),
+        "incorrect magic: 0x01020304",
+    );
     // zero-length copy
-    apply(
-        base_data,
-        &[114, 115, 2, 54, crate::consts::RS_OP_COPY_N1_N1, 0, 0, 0],
-        &mut Vec::new(),
-    )
-    .unwrap_err();
+    assert_eq!(
+        apply(
+            base_data,
+            &[114, 115, 2, 54, crate::consts::RS_OP_COPY_N1_N1, 0, 0, 0],
+            &mut Vec::new(),
+        )
+        .unwrap_err()
+        .to_string(),
+        "copy length is empty",
+    );
     // copy start out of range
-    apply(
-        base_data,
-        &[114, 115, 2, 54, crate::consts::RS_OP_COPY_N1_N1, 10, 1, 0],
-        &mut Vec::new(),
-    )
-    .unwrap_err();
+    assert_eq!(
+        apply(
+            base_data,
+            &[114, 115, 2, 54, crate::consts::RS_OP_COPY_N1_N1, 10, 1, 0],
+            &mut Vec::new(),
+        )
+        .unwrap_err()
+        .to_string(),
+        "requested copy is out of bounds (offset=10, len=1, data_len=6)",
+    );
     // copy end out of range
-    apply(
-        base_data,
-        &[114, 115, 2, 54, crate::consts::RS_OP_COPY_N1_N1, 0, 10, 0],
-        &mut Vec::new(),
-    )
-    .unwrap_err();
+    assert_eq!(
+        apply(
+            base_data,
+            &[114, 115, 2, 54, crate::consts::RS_OP_COPY_N1_N1, 0, 10, 0],
+            &mut Vec::new(),
+        )
+        .unwrap_err()
+        .to_string(),
+        "requested copy is out of bounds (offset=0, len=10, data_len=6)",
+    );
     // copy end out of range
-    apply(
-        base_data,
-        &[114, 115, 2, 54, crate::consts::RS_OP_COPY_N1_N1, 0, 10, 0],
-        &mut Vec::new(),
-    )
-    .unwrap_err();
+    assert_eq!(
+        apply(
+            base_data,
+            &[114, 115, 2, 54, crate::consts::RS_OP_COPY_N1_N1, 0, 10, 0],
+            &mut Vec::new(),
+        )
+        .unwrap_err()
+        .to_string(),
+        "requested copy is out of bounds (offset=0, len=10, data_len=6)",
+    );
+    // garbage
+    assert_eq!(
+        apply(base_data, &[114, 115, 2, 54, 0x55], &mut Vec::new(),)
+            .unwrap_err()
+            .to_string(),
+        "unexpected command byte: 0x55",
+    );
+    // trailing garbage
+    assert_eq!(
+        apply(base_data, &[114, 115, 2, 54, 0, 1], &mut Vec::new(),)
+            .unwrap_err()
+            .to_string(),
+        "unexpected data after end command",
+    );
 }
