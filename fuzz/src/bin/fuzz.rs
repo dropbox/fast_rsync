@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate honggfuzz;
 
-use fast_rsync::apply_limited;
+use fast_rsync::{apply_limited, ApplyError};
 use rand::rngs::SmallRng;
 use rand::{RngCore, SeedableRng};
 use std::io::Cursor;
@@ -25,7 +25,6 @@ fn main() {
             let base_data = &base_data[..base_len];
             out_data.clear();
 
-            println!("{:?}", delta);
             let mut librsync_data_cursor = Cursor::new(&mut librsync_data[..]);
             let mut librsync_delta_cursor = &delta[..];
             let fast_rsync_result = apply_limited(base_data, delta, &mut out_data, MAX_OUT);
@@ -34,23 +33,35 @@ fn main() {
                 &mut librsync_delta_cursor,
             )
             .and_then(|mut job| Ok(std::io::copy(&mut job, &mut librsync_data_cursor)?));
-            if fast_rsync_result.is_ok() {
-                assert!(librsync_result.is_ok());
-                // There must be no unconsumed input.
-                assert_eq!(librsync_delta_cursor, &[]);
-                let res = &out_data[..];
-                let librsync_len = librsync_data_cursor.position() as usize;
-                assert_eq!(res, &librsync_data[0..librsync_len]);
-            } else {
-                // librsync can return success if there is still unconsumed
-                // input, but `fast_rsync` considers that an error. Account for
-                // that.
-                assert!(
-                    librsync_result.is_err() || !librsync_delta_cursor.is_empty(),
-                    "{:?}, {:?}",
-                    delta,
-                    librsync_delta_cursor
-                );
+            match fast_rsync_result {
+                Ok(()) => {
+                    assert!(out_data.len() <= MAX_OUT);
+                    assert!(librsync_result.is_ok());
+                    // There must be no unconsumed input.
+                    assert_eq!(librsync_delta_cursor, &[]);
+                    let res = &out_data[..];
+                    let librsync_len = librsync_data_cursor.position() as usize;
+                    assert_eq!(res, &librsync_data[0..librsync_len]);
+                }
+                Err(ApplyError::UnexpectedEof {
+                    reading: "literal",
+                    expected,
+                    ..
+                }) if expected > u32::max_value() as usize => {
+                    // librsync bug: literal lengths are truncated to 32 bits
+                }
+                Err(e) => {
+                    // librsync can return success if there is still unconsumed
+                    // input, but `fast_rsync` considers that an error. Account for
+                    // that.
+                    assert!(
+                        librsync_result.is_err() || !librsync_delta_cursor.is_empty(),
+                        "unexpected error: {:?}, delta={:?}, librsync len={}",
+                        e,
+                        delta,
+                        librsync_data_cursor.position(),
+                    );
+                }
             }
         });
     }
