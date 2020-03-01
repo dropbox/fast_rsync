@@ -4,6 +4,7 @@ version = "0.1.1-alpha.0"
 authors = ["Dropbox Engineering", "bacher09, Artyom Pavlov (RustCrypto/hashes/MD4)"]
 license = "Apache-2.0"
 description = "An optimized implementation of librsync in pure Rust."
+readme = "README.md"
 repository = "https://github.com/dropbox/fast_rsync"
 keywords = ["rsync"]
 edition = "2018"
