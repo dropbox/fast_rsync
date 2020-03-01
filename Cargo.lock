@@ -211,6 +211,7 @@ dependencies = [
  "arrayref",
  "criterion",
  "librsync",
+ "no-panic",
  "packed_simd",
  "quickcheck",
  "quickcheck_macros",
@@ -334,6 +335,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "75189eb85871ea5c2e2c15abbdd541185f63b408415e5051f5cac122d8c774b9"
 dependencies = [
  "rustc_version",
+]
+
+[[package]]
+name = "no-panic"
+version = "0.1.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a11c6db47b62f887ae15a0d02c5b24eb9a815536812bc46ca45305a6d22e5675"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

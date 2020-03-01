@@ -17,6 +17,7 @@ impl Crc {
     }
 
     #[allow(dead_code)]
+    #[cfg_attr(test, no_panic::no_panic)]
     pub fn rollout(self, size: u32, old_byte: u8) -> Crc {
         let size = size as u16;
         let old_byte = old_byte as u16;
@@ -26,6 +27,7 @@ impl Crc {
         Crc::combine(s1, s2)
     }
 
+    #[cfg_attr(test, no_panic::no_panic)]
     pub fn rotate(self, size: u32, old_byte: u8, new_byte: u8) -> Crc {
         let size = size as u16;
         let old_byte = old_byte as u16;
@@ -39,6 +41,7 @@ impl Crc {
     }
 
     #[allow(dead_code)]
+    #[cfg_attr(test, no_panic::no_panic)]
     pub fn rollin(self, new_byte: u8) -> Crc {
         let (mut s1, mut s2) = self.split();
         s1 = s1.wrapping_add(new_byte as u16);
@@ -48,9 +51,10 @@ impl Crc {
         Crc::combine(s1, s2)
     }
 
+    // Note that `is_x86_feature_detected` trips `no_panic`.
     pub fn update(self, buf: &[u8]) -> Crc {
         macro_rules! imp {
-            ($($x:tt)*) => {$($x)* (init: Crc, buf: &[u8]) -> Crc {
+            ($($x:tt)*) => {#[cfg_attr(test, no_panic::no_panic)] $($x)* (init: Crc, buf: &[u8]) -> Crc {
                 let (mut s1, mut s2) = init.split();
                 let len = buf.len() as u32;
                 s2 = s2.wrapping_add(s1.wrapping_mul(len as u16));
@@ -81,6 +85,7 @@ impl Crc {
 
     /// Like `Crc::update`, but not autovectorizable.
     #[allow(dead_code)]
+    #[cfg_attr(test, no_panic::no_panic)]
     pub fn basic_update(self, buf: &[u8]) -> Crc {
         let (mut s1, mut s2) = self.split();
         for &byte in buf {
