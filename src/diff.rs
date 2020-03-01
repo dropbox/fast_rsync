@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+use std::error::Error;
+use std::fmt;
+
 use crate::consts::{
     DELTA_MAGIC, RS_OP_COPY_N1_N1, RS_OP_END, RS_OP_LITERAL_1, RS_OP_LITERAL_N1, RS_OP_LITERAL_N2,
     RS_OP_LITERAL_N4, RS_OP_LITERAL_N8,
@@ -6,7 +10,6 @@ use crate::crc::Crc;
 use crate::hasher::BuildCrcHasher;
 use crate::md4::{md4, MD4_SIZE};
 use crate::signature::{IndexedSignature, SignatureType};
-use std::collections::HashMap;
 
 /// This controls how many times we will allow ourselves to fail at matching a
 /// given crc before permanently giving up on it (essentially removing it from
@@ -16,7 +19,15 @@ const MAX_CRC_COLLISIONS: u32 = 1024;
 /// Indicates that a delta could not be calculated, generally because the
 /// provided signature was invalid or unsupported.
 #[derive(Debug)]
-pub struct DiffError;
+pub struct DiffError(());
+
+impl fmt::Display for DiffError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("invalid or unsupported signature for diff")
+    }
+}
+
+impl Error for DiffError {}
 
 fn insert_command(len: u64, out: &mut Vec<u8>) {
     assert!(len != 0);
@@ -109,10 +120,10 @@ pub fn diff(
     let crypto_hash_size = signature.crypto_hash_size as usize;
     if let SignatureType::Md4 = signature.signature_type {
         if crypto_hash_size > MD4_SIZE {
-            return Err(DiffError);
+            return Err(DiffError(()));
         }
     } else {
-        return Err(DiffError);
+        return Err(DiffError(()));
     }
     out.extend_from_slice(&DELTA_MAGIC.to_be_bytes());
     let mut state = OutputState {

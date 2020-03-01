@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::{fmt, mem};
 
 use crate::consts::{
@@ -67,6 +68,8 @@ impl fmt::Display for ApplyError {
         }
     }
 }
+
+impl Error for ApplyError {}
 
 /// Apply `delta` to the base data `base`, writing the result to `out`.
 /// Errors if more than `limit` bytes would be written to `out`.

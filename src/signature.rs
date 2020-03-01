@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::error::Error;
+use std::fmt;
 
 use crate::consts::{BLAKE2_MAGIC, MD4_MAGIC};
 use crate::crc::Crc;
@@ -41,7 +43,15 @@ pub enum SignatureType {
 
 /// Indicates that a signature was not valid.
 #[derive(Debug)]
-pub struct SignatureParseError;
+pub struct SignatureParseError(());
+
+impl fmt::Display for SignatureParseError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("invalid or unsupported signature")
+    }
+}
+
+impl Error for SignatureParseError {}
 
 /// Options for [Signature::calculate].
 #[derive(Copy, Clone, Debug)]
@@ -104,7 +114,7 @@ impl<'a> Signature<'a> {
             ($n:expr) => {{
                 let n = $n;
                 if buf.len() < n {
-                    return Err(SignatureParseError);
+                    return Err(SignatureParseError(()));
                 }
                 let (prefix, rest) = buf.split_at(n);
                 buf = rest;
@@ -123,13 +133,13 @@ impl<'a> Signature<'a> {
         let signature_type = match magic {
             MD4_MAGIC => SignatureType::Md4,
             BLAKE2_MAGIC => SignatureType::Blake2,
-            _ => return Err(SignatureParseError),
+            _ => return Err(SignatureParseError(())),
         };
         let block_size = read_u32!();
         let crypto_hash_size = read_u32!();
         let block_signature_size = (4 + crypto_hash_size) as usize;
         if buf.len() % block_signature_size != 0 {
-            return Err(SignatureParseError);
+            return Err(SignatureParseError(()));
         }
         let mut blocks = Vec::with_capacity(buf.len() % block_signature_size);
         while !buf.is_empty() {
