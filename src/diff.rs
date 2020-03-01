@@ -110,7 +110,13 @@ impl OutputState {
 
 /// Calculate a delta and write it to `out`.
 /// This delta can be applied to the base data represented by `signature` to
-/// reconstruct `data`.
+/// attempt to reconstruct `data`.
+///
+/// # Security
+/// Since `fast_rsync` uses the insecure MD4 hash algorithm, the resulting delta must not be
+/// trusted to correctly reconstruct `data`. The delta might fail to apply or produce the wrong
+/// data entirely. Always use another mechanism, like a cryptographic hash function, to validate
+/// the final reconstructed data.
 pub fn diff(
     signature: &IndexedSignature<'_>,
     data: &[u8],

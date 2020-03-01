@@ -8,19 +8,22 @@ use crate::hasher::BuildCrcHasher;
 use crate::md4::{md4, md4_many, MD4_SIZE};
 
 /// An rsync signature.
+///
+/// A signature contains hashed information about a block of data. It is used to compute a delta
+/// against that data.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Signature<'a> {
-    pub(crate) signature_type: SignatureType,
-    pub(crate) block_size: u32,
-    pub(crate) crypto_hash_size: u32,
-    pub(crate) blocks: Vec<BlockSignature<'a>>,
+    signature_type: SignatureType,
+    block_size: u32,
+    crypto_hash_size: u32,
+    blocks: Vec<BlockSignature<'a>>,
 }
 
 /// The signature of a single block.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub(crate) struct BlockSignature<'a> {
-    pub(crate) crc: Crc,
-    pub(crate) crypto_hash: &'a [u8],
+struct BlockSignature<'a> {
+    crc: Crc,
+    crypto_hash: &'a [u8],
 }
 
 /// A signature with a block index, suitable for calculating deltas.
@@ -36,7 +39,7 @@ pub struct IndexedSignature<'a> {
 /// The hash type used with within the signature.
 /// Note that this library generally only supports MD4 signatures.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum SignatureType {
+pub(crate) enum SignatureType {
     Md4,
     Blake2,
 }

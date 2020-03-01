@@ -6,35 +6,59 @@ use crate::consts::{
     RS_OP_LITERAL_N1, RS_OP_LITERAL_N8,
 };
 
-/// Indicates that a delta could not be applied, either because it was invalid
-/// or because a hash collision of some kind was detected.
+/// Indicates that a delta could not be applied because it was invalid.
 #[derive(Debug, Copy, Clone)]
 pub enum ApplyError {
-    WrongMagic(u32),
+    /// The delta started with the wrong magic, perhaps because it is not really an rsync delta.
+    WrongMagic {
+        /// The magic number encountered.
+        magic: u32,
+    },
+    /// The delta ended unexpectedly, perhaps because it was truncated.
     UnexpectedEof {
+        /// The item being read.
         reading: &'static str,
+        /// The expected length of that item.
         expected: usize,
+        /// The remaining length of the input.
         available: usize,
     },
+    /// The resulting data would have exceeded the output limit given to [apply_limited()].
     OutputLimit {
+        /// The item being written.
         what: &'static str,
+        /// The length of that item.
         wanted: usize,
+        /// The remaining output limit.
         available: usize,
     },
+    /// The delta contained an out-of-bounds reference to the base data: that is, `offset + len > data_len`.
     CopyOutOfBounds {
+        /// The copy offset.
         offset: u64,
+        /// The copy length.
         len: u64,
+        /// The length of the base data.
         data_len: usize,
     },
+    /// The delta contained a zero-length copy command.
     CopyZero,
-    UnknownCommand(u8),
-    TrailingData,
+    /// The delta contained an unrecognized command.
+    UnknownCommand {
+        /// The command byte encountered.
+        command: u8,
+    },
+    /// The delta contained data after its end command.
+    TrailingData {
+        /// The length of the trailing data.
+        length: usize,
+    },
 }
 
 impl fmt::Display for ApplyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
-            ApplyError::WrongMagic(magic) => write!(f, "incorrect magic: 0x{:08x}", magic),
+            ApplyError::WrongMagic { magic } => write!(f, "incorrect magic: 0x{:08x}", magic),
             ApplyError::UnexpectedEof {
                 reading,
                 expected,
@@ -63,8 +87,12 @@ impl fmt::Display for ApplyError {
                 offset, len, data_len
             ),
             ApplyError::CopyZero => f.write_str("copy length is empty"),
-            ApplyError::UnknownCommand(cmd) => write!(f, "unexpected command byte: 0x{:02x}", cmd),
-            ApplyError::TrailingData => f.write_str("unexpected data after end command"),
+            ApplyError::UnknownCommand { command } => {
+                write!(f, "unexpected command byte: 0x{:02x}", command)
+            }
+            ApplyError::TrailingData { length } => {
+                write!(f, "unexpected data after end command (len={})", length)
+            }
         }
     }
 }
@@ -134,7 +162,7 @@ pub fn apply_limited(
     }
     let magic = read_int!(u32, "magic");
     if magic != DELTA_MAGIC {
-        return Err(ApplyError::WrongMagic(magic));
+        return Err(ApplyError::WrongMagic { magic });
     }
     loop {
         let cmd = read_int!(u8, "cmd");
@@ -179,18 +207,25 @@ pub fn apply_limited(
                 let subslice = base.get(offset..end).ok_or(oob)?;
                 safe_extend!(subslice, "copy");
             }
-            _ => return Err(ApplyError::UnknownCommand(cmd)),
+            _ => return Err(ApplyError::UnknownCommand { command: cmd }),
         }
     }
     if delta.is_empty() {
         Ok(())
     } else {
         // extra content after EOF
-        Err(ApplyError::TrailingData)
+        Err(ApplyError::TrailingData {
+            length: delta.len(),
+        })
     }
 }
 
-/// Apply `delta` to the base data `base`, writing the result to `out`.
+/// Apply `delta` to the base data `base`, appending the result to `out`.
+///
+/// # Security
+/// This function should not be used with untrusted input, as a delta may create an arbitrarily
+/// large output which can exhaust available memory. Use [apply_limited()] instead to set an upper
+/// bound on the size of `out`.
 pub fn apply(base: &[u8], delta: &[u8], out: &mut Vec<u8>) -> Result<(), ApplyError> {
     apply_limited(base, delta, out, usize::max_value())
 }

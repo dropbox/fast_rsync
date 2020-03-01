@@ -5,7 +5,7 @@
 
 [Documentation](https://docs.rs/fast_rsync)
 
-An faster implementation of [librsync](https://github.com/librsync/librsync) in
+A faster implementation of [librsync](https://github.com/librsync/librsync) in
 pure Rust, using SIMD operations where available. Note that only the legacy MD4
 format is supported, not BLAKE2.
 
