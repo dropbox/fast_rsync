@@ -1,7 +1,7 @@
 # fast\_rsync
 
 [![crates.io](https://meritbadge.herokuapp.com/fast_rsync)](https://crates.io/crates/fast_rsync)
-[![Build Status](https://travis-ci.org/dropbox/fast_rsync.svg?branch=master)](https://travis-ci.org/dropbox/fast_rsync)
+![Build Status](https://github.com/dropbox/fast_rsync/workflows/Rust/badge.svg)
 
 [Documentation](https://docs.rs/fast_rsync)
 
