@@ -8,6 +8,12 @@ repository = "https://github.com/dropbox/fast_rsync"
 keywords = ["rsync"]
 edition = "2018"
 
+exclude = [
+    ".github",
+    ".gitignore",
+    "rust-toolchain",
+]
+
 [dependencies]
 arrayref = "0.3.6"
 packed_simd = "0.3.3"
