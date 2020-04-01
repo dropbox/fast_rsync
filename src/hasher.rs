@@ -16,10 +16,10 @@ impl Hasher for CrcHasher {
         assert_eq!(self.state, 0, "can't hash more than one u32");
         self.state = val;
     }
+    #[cfg(target_pointer_width = "64")]
     #[inline]
     fn finish(&self) -> u64 {
         // the avalanche function from xxhash
-        // TODO: maybe use the 32-bit version on 32-bit?
         let mut val = self.state as u64;
         val ^= val >> 33;
         val = val.wrapping_mul(0xC2B2AE3D27D4EB4F);
@@ -27,6 +27,17 @@ impl Hasher for CrcHasher {
         val = val.wrapping_mul(0x165667B19E3779F9);
         val ^= val >> 32;
         val
+    }
+    #[cfg(target_pointer_width = "32")]
+    #[inline]
+    fn finish(&self) -> u64 {
+        let mut val = self.state;
+        val ^= val >> 15;
+        val = val.wrapping_mul(0x85EBCA77);
+        val ^= val >> 13;
+        val = val.wrapping_mul(0xC2B2AE3D);
+        val ^= val >> 16;
+        val as u64
     }
 }
 
