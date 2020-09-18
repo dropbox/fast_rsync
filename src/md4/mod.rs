@@ -4,7 +4,8 @@
 
 use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};
 
-mod simd_transpose;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+mod x86_simd_transpose;
 
 pub const MD4_SIZE: usize = 16;
 
@@ -136,113 +137,7 @@ mod simd {
         fun: fn(&[&[u8]]) -> [[u8; 16]; MAX_LANES],
     }
 
-    macro_rules! n_lanes {
-        ($u32xN:path, $load:path, $feature:tt) => (
-            use crate::md4::S;
-            use crate::md4::simd::{Md4xN, MAX_LANES};
-            use arrayref::{array_ref, mut_array_refs};
-            use std::ops::Add;
-
-            #[allow(non_camel_case_types)]
-            type u32xN = $u32xN;
-            pub const LANES: usize = u32xN::lanes();
-
-            md4!((#[target_feature(enable = $feature)] unsafe), u32xN, u32xN::add, u32xN::splat);
-
-            /// Compute the MD4 sum of multiple equally-sized blocks of data.
-            /// Unsafety: This function requires $feature to be available.
-            #[allow(non_snake_case)]
-            #[target_feature(enable = $feature)]
-            unsafe fn md4xN(data: &[&[u8]; LANES]) -> [[u8; 16]; LANES] {
-                let mut state = Md4State {
-                    s: [
-                        u32xN::splat(S[0]),
-                        u32xN::splat(S[1]),
-                        u32xN::splat(S[2]),
-                        u32xN::splat(S[3]),
-                    ],
-                };
-                let len = data[0].len();
-                for ix in 1..LANES {
-                    assert_eq!(len, data[ix].len());
-                }
-                let mut blocks = [u32xN::splat(0); 16];
-                for block in 0..(len / 64) {
-                    $load(&mut blocks, |lane| array_ref![&data[lane], 64 * block, 64]);
-                    state.process_block(&blocks);
-                }
-                let remainder = len % 64;
-                let bit_len = len as u64 * 8;
-                {
-                    let mut padded = [[0; 64]; LANES];
-                    for lane in 0..LANES {
-                        padded[lane][..remainder].copy_from_slice(&data[lane][len - remainder..]);
-                        padded[lane][remainder] = 0x80;
-                    }
-                    $load(&mut blocks, |lane| &padded[lane]);
-                    if remainder < 56 {
-                        blocks[14] = u32xN::splat(bit_len as u32);
-                        blocks[15] = u32xN::splat((bit_len >> 32) as u32);
-                    }
-                    state.process_block(&blocks);
-                }
-                if remainder >= 56 {
-                    let mut blocks = [u32xN::splat(0); 16];
-                    blocks[14] = u32xN::splat(bit_len as u32);
-                    blocks[15] = u32xN::splat((bit_len >> 32) as u32);
-                    state.process_block(&blocks);
-                }
-                let mut digests = [[0; 16]; LANES];
-                for lane in 0..LANES {
-                    let (a, b, c, d) = mut_array_refs!(&mut digests[lane], 4, 4, 4, 4);
-                    *a = state.s[0].extract(lane).to_le_bytes();
-                    *b = state.s[1].extract(lane).to_le_bytes();
-                    *c = state.s[2].extract(lane).to_le_bytes();
-                    *d = state.s[3].extract(lane).to_le_bytes();
-                }
-                digests
-            }
-
-            pub fn select() -> Option<Md4xN> {
-                if is_x86_feature_detected!($feature) {
-                    Some(Md4xN {
-                        lanes: LANES,
-                        fun: |data| {
-                            let mut ret = [[0; 16]; MAX_LANES];
-                            let (prefix, _) = mut_array_refs!(&mut ret, LANES, MAX_LANES-LANES);
-                            // Unsafety: We just checked that $feature is available.
-                            *prefix = unsafe { md4xN(array_ref![data, 0, LANES]) };
-                            ret
-                        }
-                    })
-                } else {
-                    None
-                }
-            }
-        );
-    }
-
-    mod lanes_4 {
-        n_lanes!(
-            packed_simd::u32x4,
-            crate::md4::simd_transpose::load_16x4_sse2::<crate::md4::simd_transpose::LE, _>,
-            "sse2"
-        );
-    }
-    mod lanes_8 {
-        n_lanes!(
-            packed_simd::u32x8,
-            crate::md4::simd_transpose::load_16x8::<crate::md4::simd_transpose::LE, _>,
-            "avx2"
-        );
-    }
-
     impl Md4xN {
-        /// Returns a SIMD implementation if one is available.
-        pub fn select() -> Option<Md4xN> {
-            lanes_8::select().or_else(lanes_4::select)
-        }
-
         /// The number of digests this implementation calculates at once.
         pub fn lanes(&self) -> usize {
             self.lanes
@@ -251,6 +146,133 @@ mod simd {
         /// Calculate the digest of `self.lanes()` equally-sized blocks of data.
         pub fn md4(&self, data: &[&[u8]]) -> [[u8; 16]; MAX_LANES] {
             (self.fun)(data)
+        }
+    }
+
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+    mod x86 {
+        macro_rules! n_lanes {
+            ($u32xN:path, $load:path, $feature:tt) => (
+                use crate::md4::S;
+                use crate::md4::simd::{Md4xN, MAX_LANES};
+                use arrayref::{array_ref, mut_array_refs};
+                use std::ops::Add;
+
+                #[allow(non_camel_case_types)]
+                type u32xN = $u32xN;
+                pub const LANES: usize = u32xN::lanes();
+
+                md4!((#[target_feature(enable = $feature)] unsafe), u32xN, u32xN::add, u32xN::splat);
+
+                /// Compute the MD4 sum of multiple equally-sized blocks of data.
+                /// Unsafety: This function requires $feature to be available.
+                #[allow(non_snake_case)]
+                #[target_feature(enable = $feature)]
+                unsafe fn md4xN(data: &[&[u8]; LANES]) -> [[u8; 16]; LANES] {
+                    let mut state = Md4State {
+                        s: [
+                            u32xN::splat(S[0]),
+                            u32xN::splat(S[1]),
+                            u32xN::splat(S[2]),
+                            u32xN::splat(S[3]),
+                        ],
+                    };
+                    let len = data[0].len();
+                    for ix in 1..LANES {
+                        assert_eq!(len, data[ix].len());
+                    }
+                    let mut blocks = [u32xN::splat(0); 16];
+                    for block in 0..(len / 64) {
+                        $load(&mut blocks, |lane| array_ref![&data[lane], 64 * block, 64]);
+                        state.process_block(&blocks);
+                    }
+                    let remainder = len % 64;
+                    let bit_len = len as u64 * 8;
+                    {
+                        let mut padded = [[0; 64]; LANES];
+                        for lane in 0..LANES {
+                            padded[lane][..remainder].copy_from_slice(&data[lane][len - remainder..]);
+                            padded[lane][remainder] = 0x80;
+                        }
+                        $load(&mut blocks, |lane| &padded[lane]);
+                        if remainder < 56 {
+                            blocks[14] = u32xN::splat(bit_len as u32);
+                            blocks[15] = u32xN::splat((bit_len >> 32) as u32);
+                        }
+                        state.process_block(&blocks);
+                    }
+                    if remainder >= 56 {
+                        let mut blocks = [u32xN::splat(0); 16];
+                        blocks[14] = u32xN::splat(bit_len as u32);
+                        blocks[15] = u32xN::splat((bit_len >> 32) as u32);
+                        state.process_block(&blocks);
+                    }
+                    let mut digests = [[0; 16]; LANES];
+                    for lane in 0..LANES {
+                        let (a, b, c, d) = mut_array_refs!(&mut digests[lane], 4, 4, 4, 4);
+                        *a = state.s[0].extract(lane).to_le_bytes();
+                        *b = state.s[1].extract(lane).to_le_bytes();
+                        *c = state.s[2].extract(lane).to_le_bytes();
+                        *d = state.s[3].extract(lane).to_le_bytes();
+                    }
+                    digests
+                }
+
+                pub fn select() -> Option<Md4xN> {
+                    if is_x86_feature_detected!($feature) {
+                        Some(Md4xN {
+                            lanes: LANES,
+                            fun: |data| {
+                                let mut ret = [[0; 16]; MAX_LANES];
+                                let (prefix, _) = mut_array_refs!(&mut ret, LANES, MAX_LANES-LANES);
+                                // Unsafety: We just checked that $feature is available.
+                                *prefix = unsafe { md4xN(array_ref![data, 0, LANES]) };
+                                ret
+                            }
+                        })
+                    } else {
+                        None
+                    }
+                }
+                );
+        }
+
+        mod lanes_4 {
+            n_lanes!(
+                packed_simd::u32x4,
+                crate::md4::x86_simd_transpose::load_16x4_sse2::<
+                    crate::md4::x86_simd_transpose::LE,
+                    _,
+                >,
+                "sse2"
+            );
+        }
+        mod lanes_8 {
+            n_lanes!(
+                packed_simd::u32x8,
+                crate::md4::x86_simd_transpose::load_16x8::<crate::md4::x86_simd_transpose::LE, _>,
+                "avx2"
+            );
+        }
+
+        use super::Md4xN;
+
+        impl Md4xN {
+            /// Returns a SIMD implementation if one is available.
+            pub fn select() -> Option<Md4xN> {
+                lanes_8::select().or_else(lanes_4::select)
+            }
+        }
+    }
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
+    mod not_x86 {
+        use super::Md4xN;
+
+        impl Md4xN {
+            /// Returns a SIMD implementation if one is available.
+            pub fn select() -> Option<Md4xN> {
+                None
+            }
         }
     }
 }
