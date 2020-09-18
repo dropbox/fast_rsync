@@ -67,16 +67,19 @@ impl Crc {
                 Crc::combine(s1, s2)
             }};
         }
-        if is_x86_feature_detected!("avx2") {
-            imp!(#[target_feature(enable = "avx2")] unsafe fn imp_avx2);
-            unsafe { imp_avx2(self, buf) }
-        } else if is_x86_feature_detected!("sse2") {
-            imp!(#[target_feature(enable = "sse2")] unsafe fn imp_sse2);
-            unsafe { imp_sse2(self, buf) }
-        } else {
-            imp!(fn imp_baseline);
-            imp_baseline(self, buf)
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            if is_x86_feature_detected!("avx2") {
+                imp!(#[target_feature(enable = "avx2")] unsafe fn imp_avx2);
+                unsafe { return imp_avx2(self, buf); }
+            }
+            if is_x86_feature_detected!("sse2") {
+                imp!(#[target_feature(enable = "sse2")] unsafe fn imp_sse2);
+                unsafe { return imp_sse2(self, buf); }
+            }
         }
+        imp!(fn imp_baseline);
+        imp_baseline(self, buf)
     }
 
     /// Like `Crc::update`, but not autovectorizable.
