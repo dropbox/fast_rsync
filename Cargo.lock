@@ -197,7 +197,7 @@ checksum = "bb1f6b1ce1c140482ea30ddd3335fc0024ac7ee112895426e0a629a6c20adfe3"
 
 [[package]]
 name = "fast_rsync"
-version = "0.1.2"
+version = "0.1.3-alpha.0"
 dependencies = [
  "arrayref",
  "criterion",
