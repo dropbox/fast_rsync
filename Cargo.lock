@@ -63,6 +63,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "cc"
+version = "1.0.60"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef611cc68ff783f18535d77ddd080185275713d852c4f5cbb6122c462a7a825c"
+
+[[package]]
 name = "cfg-if"
 version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -203,12 +209,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gcc"
-version = "0.3.55"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8f5f3913fa0bfe7ee1fd8248b6b9f42a5af4b9d65ec2dd2c3c26132b950ecfc2"
-
-[[package]]
 name = "getrandom"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -266,8 +266,8 @@ checksum = "9457b06509d27052635f90d6466700c65095fdf75409b3fbdd903e988b886f49"
 
 [[package]]
 name = "librsync"
-version = "0.2.0"
-source = "git+https://github.com/goffrie/librsync-rs?rev=ab9c427b5b20624fe533ad0247fe0f9c3460245e#ab9c427b5b20624fe533ad0247fe0f9c3460245e"
+version = "0.2.1"
+source = "git+https://github.com/goffrie/librsync-rs?rev=56e7646d133c3174656b66c61f6259d6154a8873#56e7646d133c3174656b66c61f6259d6154a8873"
 dependencies = [
  "libc",
  "librsync-sys",
@@ -275,10 +275,10 @@ dependencies = [
 
 [[package]]
 name = "librsync-sys"
-version = "0.1.1"
-source = "git+https://github.com/goffrie/librsync-rs?rev=ab9c427b5b20624fe533ad0247fe0f9c3460245e#ab9c427b5b20624fe533ad0247fe0f9c3460245e"
+version = "0.1.2"
+source = "git+https://github.com/goffrie/librsync-rs?rev=56e7646d133c3174656b66c61f6259d6154a8873#56e7646d133c3174656b66c61f6259d6154a8873"
 dependencies = [
- "gcc",
+ "cc",
  "libc",
 ]
 
