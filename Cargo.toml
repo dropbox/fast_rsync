@@ -17,7 +17,7 @@ exclude = [
 
 [dependencies]
 arrayref = "0.3.6"
-packed_simd = "0.3.3"
+packed_simd = { version = "0.3.4", package = "packed_simd_2" }
 
 [dev-dependencies]
 librsync = { git = "https://github.com/goffrie/librsync-rs", rev = "56e7646d133c3174656b66c61f6259d6154a8873", default-features = false }
