@@ -13,7 +13,17 @@ pub const MD4_SIZE: usize = 16;
 const S: [u32; 4] = [0x6745_2301, 0xEFCD_AB89, 0x98BA_DCFE, 0x1032_5476];
 
 macro_rules! md4 {
-    (($($prefix:tt)*), $u32:ty, $add:path, $($s:path)?) => {
+    (
+        ($($prefix:tt)*),
+        $u32:ty,
+        add = $add:path,
+        and = $and:path,
+        or = $or:path,
+        andnot = $andnot:path,
+        xor = $xor:path,
+        rol = ($($rol:tt)*),
+        splat = $splat:path,
+    ) => {
         #[derive(Copy, Clone)]
         struct Md4State {
             s: [$u32; 4],
@@ -23,34 +33,29 @@ macro_rules! md4 {
         impl Md4State {
             $($prefix)*
             fn process_block(&mut self, data: &[$u32; 16]) {
-                #[inline(always)]
-                fn f(x: $u32, y: $u32, z: $u32) -> $u32 {
-                    (x & y) | (!x & z)
+                macro_rules! f {
+                    ($x:expr, $y:expr, $z:expr) => ($or($and($x, $y), $andnot($x, $z)));
                 }
-
-                #[inline(always)]
-                fn g(x: $u32, y: $u32, z: $u32) -> $u32 {
-                    (x & y) | (x & z) | (y & z)
+                macro_rules! g {
+                    ($x:expr, $y:expr, $z:expr) => ($or($or($and($x, $y), $and($x, $z)), $and($y, $z)));
                 }
-
-                #[inline(always)]
-                fn h(x: $u32, y: $u32, z: $u32) -> $u32 {
-                    x ^ y ^ z
+                macro_rules! h {
+                    ($x:expr, $y:expr, $z:expr) => ($xor($xor($x, $y), $z));
                 }
-
-                #[inline(always)]
-                fn op1(a: $u32, b: $u32, c: $u32, d: $u32, k: $u32, s: u32) -> $u32 {
-                    $add($add(a, f(b, c, d)), k).rotate_left($($s)?(s))
+                macro_rules! op1 {
+                    ($a:expr, $b:expr, $c:expr, $d:expr, $k:expr, $s:expr) => (
+                        $($rol)*($add($add($a, f!($b, $c, $d)), $k), $s)
+                    );
                 }
-
-                #[inline(always)]
-                fn op2(a: $u32, b: $u32, c: $u32, d: $u32, k: $u32, s: u32) -> $u32 {
-                    $add($add($add(a, g(b, c, d)), k), 0x5A82_7999).rotate_left($($s)?(s))
+                macro_rules! op2 {
+                    ($a:expr, $b:expr, $c:expr, $d:expr, $k:expr, $s:expr) => (
+                        $($rol)*($add($add($add($a, g!($b, $c, $d)), $k), $splat(0x5A82_7999)), $s)
+                    );
                 }
-
-                #[inline(always)]
-                fn op3(a: $u32, b: $u32, c: $u32, d: $u32, k: $u32, s: u32) -> $u32 {
-                    $add($add($add(a, h(b, c, d)), k), 0x6ED9_EBA1).rotate_left($($s)?(s))
+                macro_rules! op3 {
+                    ($a:expr, $b:expr, $c:expr, $d:expr, $k:expr, $s:expr) => (
+                        $($rol)*($add($add($add($a, h!($b, $c, $d)), $k), $splat(0x6ED9_EBA1)), $s)
+                    );
                 }
 
                 let mut a = self.s[0];
@@ -58,29 +63,45 @@ macro_rules! md4 {
                 let mut c = self.s[2];
                 let mut d = self.s[3];
 
-                // round 1
-                for &i in &[0, 4, 8, 12] {
-                    a = op1(a, b, c, d, data[i], 3);
-                    d = op1(d, a, b, c, data[i + 1], 7);
-                    c = op1(c, d, a, b, data[i + 2], 11);
-                    b = op1(b, c, d, a, data[i + 3], 19);
+                // Manually unrolling these loops avoids bounds checking on `data` accesses.
+                macro_rules! round1 {
+                    ($i:expr) => {
+                        a = op1!(a, b, c, d, data[$i], 3);
+                        d = op1!(d, a, b, c, data[$i + 1], 7);
+                        c = op1!(c, d, a, b, data[$i + 2], 11);
+                        b = op1!(b, c, d, a, data[$i + 3], 19);
+                    }
                 }
+                round1!(0);
+                round1!(4);
+                round1!(8);
+                round1!(12);
 
-                // round 2
-                for i in 0..4 {
-                    a = op2(a, b, c, d, data[i], 3);
-                    d = op2(d, a, b, c, data[i + 4], 5);
-                    c = op2(c, d, a, b, data[i + 8], 9);
-                    b = op2(b, c, d, a, data[i + 12], 13);
+                macro_rules! round2 {
+                    ($i:expr) => {
+                        a = op2!(a, b, c, d, data[$i], 3);
+                        d = op2!(d, a, b, c, data[$i + 4], 5);
+                        c = op2!(c, d, a, b, data[$i + 8], 9);
+                        b = op2!(b, c, d, a, data[$i + 12], 13);
+                    }
                 }
+                round2!(0);
+                round2!(1);
+                round2!(2);
+                round2!(3);
 
-                // round 3
-                for &i in &[0, 2, 1, 3] {
-                    a = op3(a, b, c, d, data[i], 3);
-                    d = op3(d, a, b, c, data[i + 8], 9);
-                    c = op3(c, d, a, b, data[i + 4], 11);
-                    b = op3(b, c, d, a, data[i + 12], 15);
+                macro_rules! round3 {
+                    ($i:expr) => {
+                        a = op3!(a, b, c, d, data[$i], 3);
+                        d = op3!(d, a, b, c, data[$i + 8], 9);
+                        c = op3!(c, d, a, b, data[$i + 4], 11);
+                        b = op3!(b, c, d, a, data[$i + 12], 15);
+                    }
                 }
+                round3!(0);
+                round3!(2);
+                round3!(1);
+                round3!(3);
 
                 self.s[0] = $add(self.s[0], a);
                 self.s[1] = $add(self.s[1], b);
@@ -91,7 +112,22 @@ macro_rules! md4 {
     };
 }
 
-md4!((), u32, u32::wrapping_add,);
+use std::convert::identity;
+use std::ops::{BitAnd, BitOr, BitXor};
+fn andnot(x: u32, y: u32) -> u32 {
+    !x & y
+}
+md4!(
+    (),
+    u32,
+    add = u32::wrapping_add,
+    and = u32::bitand,
+    or = u32::bitor,
+    andnot = andnot,
+    xor = u32::bitxor,
+    rol = (u32::rotate_left),
+    splat = identity,
+);
 
 fn load_block(input: &[u8; 64]) -> [u32; 16] {
     macro_rules! split {
@@ -151,18 +187,44 @@ mod simd {
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     mod x86 {
+        #[cfg(target_arch = "x86")]
+        use std::arch::x86 as arch;
+        #[cfg(target_arch = "x86_64")]
+        use std::arch::x86_64 as arch;
+
         macro_rules! n_lanes {
-            ($u32xN:path, $load:path, $feature:tt) => (
+            (
+                $u32xN:path,
+                $feature:tt,
+                load = $load:path,
+                add = $add:path,
+                and = $and:path,
+                or = $or:path,
+                andnot = $andnot:path,
+                xor = $xor:path,
+                rol = $rol:tt,
+                splat = $splat:path,
+            ) => (
                 use crate::md4::S;
                 use crate::md4::simd::{Md4xN, MAX_LANES};
                 use arrayref::{array_ref, mut_array_refs};
-                use std::ops::Add;
+                use std::mem;
 
                 #[allow(non_camel_case_types)]
                 type u32xN = $u32xN;
-                pub const LANES: usize = u32xN::lanes();
+                pub const LANES: usize = mem::size_of::<u32xN>() / mem::size_of::<u32>();
 
-                md4!((#[target_feature(enable = $feature)] unsafe), u32xN, u32xN::add, u32xN::splat);
+                md4!(
+                    (#[target_feature(enable = $feature)] unsafe),
+                    u32xN,
+                    add = $add,
+                    and = $and,
+                    or = $or,
+                    andnot = $andnot,
+                    xor = $xor,
+                    rol = $rol,
+                    splat = $splat,
+                );
 
                 /// Compute the MD4 sum of multiple equally-sized blocks of data.
                 /// Unsafety: This function requires $feature to be available.
@@ -171,19 +233,18 @@ mod simd {
                 unsafe fn md4xN(data: &[&[u8]; LANES]) -> [[u8; 16]; LANES] {
                     let mut state = Md4State {
                         s: [
-                            u32xN::splat(S[0]),
-                            u32xN::splat(S[1]),
-                            u32xN::splat(S[2]),
-                            u32xN::splat(S[3]),
+                            $splat(S[0]),
+                            $splat(S[1]),
+                            $splat(S[2]),
+                            $splat(S[3]),
                         ],
                     };
                     let len = data[0].len();
                     for ix in 1..LANES {
                         assert_eq!(len, data[ix].len());
                     }
-                    let mut blocks = [u32xN::splat(0); 16];
                     for block in 0..(len / 64) {
-                        $load(&mut blocks, |lane| array_ref![&data[lane], 64 * block, 64]);
+                        let blocks = $load(|lane| array_ref![&data[lane], 64 * block, 64]);
                         state.process_block(&blocks);
                     }
                     let remainder = len % 64;
@@ -194,26 +255,28 @@ mod simd {
                             padded[lane][..remainder].copy_from_slice(&data[lane][len - remainder..]);
                             padded[lane][remainder] = 0x80;
                         }
-                        $load(&mut blocks, |lane| &padded[lane]);
+                        let mut blocks = $load(|lane| &padded[lane]);
                         if remainder < 56 {
-                            blocks[14] = u32xN::splat(bit_len as u32);
-                            blocks[15] = u32xN::splat((bit_len >> 32) as u32);
+                            blocks[14] = $splat(bit_len as u32);
+                            blocks[15] = $splat((bit_len >> 32) as u32);
                         }
                         state.process_block(&blocks);
                     }
                     if remainder >= 56 {
-                        let mut blocks = [u32xN::splat(0); 16];
-                        blocks[14] = u32xN::splat(bit_len as u32);
-                        blocks[15] = u32xN::splat((bit_len >> 32) as u32);
+                        let mut blocks = [$splat(0); 16];
+                        blocks[14] = $splat(bit_len as u32);
+                        blocks[15] = $splat((bit_len >> 32) as u32);
                         state.process_block(&blocks);
                     }
                     let mut digests = [[0; 16]; LANES];
+                    // Safety: `u32xN` and `[u32; LANES]` are always safely transmutable
+                    let final_state = mem::transmute::<[u32xN; 4], [[u32; LANES]; 4]>(state.s);
                     for lane in 0..LANES {
                         let (a, b, c, d) = mut_array_refs!(&mut digests[lane], 4, 4, 4, 4);
-                        *a = state.s[0].extract(lane).to_le_bytes();
-                        *b = state.s[1].extract(lane).to_le_bytes();
-                        *c = state.s[2].extract(lane).to_le_bytes();
-                        *d = state.s[3].extract(lane).to_le_bytes();
+                        *a = final_state[0][lane].to_le_bytes();
+                        *b = final_state[1][lane].to_le_bytes();
+                        *c = final_state[2][lane].to_le_bytes();
+                        *d = final_state[3][lane].to_le_bytes();
                     }
                     digests
                 }
@@ -225,7 +288,7 @@ mod simd {
                             fun: |data| {
                                 let mut ret = [[0; 16]; MAX_LANES];
                                 let (prefix, _) = mut_array_refs!(&mut ret, LANES, MAX_LANES-LANES);
-                                // Unsafety: We just checked that $feature is available.
+                                // Safety: We just checked that $feature is available.
                                 *prefix = unsafe { md4xN(array_ref![data, 0, LANES]) };
                                 ret
                             }
@@ -238,20 +301,59 @@ mod simd {
         }
 
         mod lanes_4 {
+            #[inline(always)]
+            unsafe fn splat(x: u32) -> super::arch::__m128i {
+                super::arch::_mm_set1_epi32(x as i32)
+            }
+            macro_rules! rotate_left {
+                ($x: expr, $shift: expr) => {{
+                    let x = $x;
+                    // (x << shift) | (x >> (32 - shift))
+                    super::arch::_mm_or_si128(
+                        super::arch::_mm_slli_epi32(x, $shift as i32),
+                        super::arch::_mm_srli_epi32(x, 32 - $shift as i32),
+                    )
+                }};
+            }
             n_lanes!(
-                packed_simd::u32x4,
-                crate::md4::x86_simd_transpose::load_16x4_sse2::<
-                    crate::md4::x86_simd_transpose::LE,
-                    _,
-                >,
-                "sse2"
+                super::arch::__m128i,
+                "sse2",
+                load = crate::md4::x86_simd_transpose::load_16x4_sse2,
+                add = super::arch::_mm_add_epi32,
+                and = super::arch::_mm_and_si128,
+                or = super::arch::_mm_or_si128,
+                andnot = super::arch::_mm_andnot_si128,
+                xor = super::arch::_mm_xor_si128,
+                rol = (rotate_left!),
+                splat = splat,
             );
         }
         mod lanes_8 {
+            #[inline(always)]
+            unsafe fn splat(x: u32) -> super::arch::__m256i {
+                super::arch::_mm256_set1_epi32(x as i32)
+            }
+            macro_rules! rotate_left {
+                ($x: expr, $shift: expr) => {{
+                    let x = $x;
+                    // (x << shift) | (x >> (32 - shift))
+                    super::arch::_mm256_or_si256(
+                        super::arch::_mm256_slli_epi32(x, $shift as i32),
+                        super::arch::_mm256_srli_epi32(x, 32 - $shift as i32),
+                    )
+                }};
+            }
             n_lanes!(
-                packed_simd::u32x8,
-                crate::md4::x86_simd_transpose::load_16x8::<crate::md4::x86_simd_transpose::LE, _>,
-                "avx2"
+                super::arch::__m256i,
+                "avx2",
+                load = crate::md4::x86_simd_transpose::load_16x8_avx2,
+                add = super::arch::_mm256_add_epi32,
+                and = super::arch::_mm256_and_si256,
+                or = super::arch::_mm256_or_si256,
+                andnot = super::arch::_mm256_andnot_si256,
+                xor = super::arch::_mm256_xor_si256,
+                rol = (rotate_left!),
+                splat = splat,
             );
         }
 
