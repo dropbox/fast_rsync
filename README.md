@@ -9,9 +9,7 @@ A faster implementation of [librsync](https://github.com/librsync/librsync) in
 pure Rust, using SIMD operations where available. Note that only the legacy MD4
 format is supported, not BLAKE2.
 
-Rust nightly is currently required because of
-[packed\_simd](https://github.com/rust-lang/packed_simd). Only x86 and x86-64
-architectures are currently supported.
+Only x86 and x86-64 architectures are currently supported for SIMD.
 
 ## The rsync algorithm
 This crate offers three major APIs:

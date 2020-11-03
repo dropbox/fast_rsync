@@ -71,11 +71,15 @@ impl Crc {
         {
             if is_x86_feature_detected!("avx2") {
                 imp!(#[target_feature(enable = "avx2")] unsafe fn imp_avx2);
-                unsafe { return imp_avx2(self, buf); }
+                unsafe {
+                    return imp_avx2(self, buf);
+                }
             }
             if is_x86_feature_detected!("sse2") {
                 imp!(#[target_feature(enable = "sse2")] unsafe fn imp_sse2);
-                unsafe { return imp_sse2(self, buf); }
+                unsafe {
+                    return imp_sse2(self, buf);
+                }
             }
         }
         imp!(fn imp_baseline);
