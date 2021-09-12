@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::io::{self, Write};
 use std::{fmt, mem};
 
 use crate::consts::{
@@ -7,7 +8,7 @@ use crate::consts::{
 };
 
 /// Indicates that a delta could not be applied because it was invalid.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug)]
 pub enum ApplyError {
     /// The delta started with the wrong magic, perhaps because it is not really an rsync delta.
     WrongMagic {
@@ -53,11 +54,13 @@ pub enum ApplyError {
         /// The length of the trailing data.
         length: usize,
     },
+    /// There was an IO error while writing the output
+    Io(io::Error),
 }
 
 impl fmt::Display for ApplyError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
+        match self {
             ApplyError::WrongMagic { magic } => write!(f, "incorrect magic: 0x{:08x}", magic),
             ApplyError::UnexpectedEof {
                 reading,
@@ -93,18 +96,25 @@ impl fmt::Display for ApplyError {
             ApplyError::TrailingData { length } => {
                 write!(f, "unexpected data after end command (len={})", length)
             }
+            Self::Io(source) => write!(f, "io error while writing the output (source={})", source),
         }
     }
 }
 
 impl Error for ApplyError {}
 
+impl From<io::Error> for ApplyError {
+    fn from(source: io::Error) -> Self {
+        Self::Io(source)
+    }
+}
+
 /// Apply `delta` to the base data `base`, writing the result to `out`.
 /// Errors if more than `limit` bytes would be written to `out`.
 pub fn apply_limited(
     base: &[u8],
     mut delta: &[u8],
-    out: &mut Vec<u8>,
+    out: &mut impl Write,
     mut limit: usize,
 ) -> Result<(), ApplyError> {
     macro_rules! read_n {
@@ -157,7 +167,7 @@ pub fn apply_limited(
                 });
             }
             limit -= slice.len();
-            out.extend_from_slice(slice);
+            out.write_all(slice)?;
         }};
     }
     let magic = read_int!(u32, "magic");
@@ -193,18 +203,18 @@ pub fn apply_limited(
                 let len_len = 1 << (mode % 4) as usize;
                 let offset = read_varint!(offset_len, "copy offset");
                 let len = read_varint!(len_len, "copy length");
-                let oob = ApplyError::CopyOutOfBounds {
+                let make_oob_error = || ApplyError::CopyOutOfBounds {
                     offset,
                     len,
                     data_len: base.len(),
                 };
-                let offset = safe_cast!(offset, usize, oob);
-                let len = safe_cast!(len, usize, oob);
+                let offset = safe_cast!(offset, usize, make_oob_error());
+                let len = safe_cast!(len, usize, make_oob_error());
                 if len == 0 {
                     return Err(ApplyError::CopyZero);
                 }
-                let end = offset.checked_add(len).ok_or(oob)?;
-                let subslice = base.get(offset..end).ok_or(oob)?;
+                let end = offset.checked_add(len).ok_or(make_oob_error())?;
+                let subslice = base.get(offset..end).ok_or(make_oob_error())?;
                 safe_extend!(subslice, "copy");
             }
             _ => return Err(ApplyError::UnknownCommand { command: cmd }),
@@ -226,6 +236,6 @@ pub fn apply_limited(
 /// This function should not be used with untrusted input, as a delta may create an arbitrarily
 /// large output which can exhaust available memory. Use [apply_limited()] instead to set an upper
 /// bound on the size of `out`.
-pub fn apply(base: &[u8], delta: &[u8], out: &mut Vec<u8>) -> Result<(), ApplyError> {
+pub fn apply(base: &[u8], delta: &[u8], out: &mut impl Write) -> Result<(), ApplyError> {
     apply_limited(base, delta, out, usize::max_value())
 }
