@@ -184,6 +184,12 @@ impl<'a> Signature<'a> {
                 .or_default()
                 .insert(block.crypto_hash, idx as u32);
         }
+
+        // Multiple blocks having the same `Crc` value means that the hashmap will reserve more
+        // capacity than needed. This is particularly noticable when `self.blocks` contains a very
+        // large number of values
+        blocks.shrink_to_fit();
+
         IndexedSignature {
             signature_type: self.signature_type,
             block_size: self.block_size,
