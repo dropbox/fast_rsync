@@ -213,8 +213,8 @@ pub fn apply_limited(
                 if len == 0 {
                     return Err(ApplyError::CopyZero);
                 }
-                let end = offset.checked_add(len).ok_or(make_oob_error())?;
-                let subslice = base.get(offset..end).ok_or(make_oob_error())?;
+                let end = offset.checked_add(len).ok_or_else(make_oob_error)?;
+                let subslice = base.get(offset..end).ok_or_else(make_oob_error)?;
                 safe_extend!(subslice, "copy");
             }
             _ => return Err(ApplyError::UnknownCommand { command: cmd }),
