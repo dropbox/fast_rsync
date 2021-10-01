@@ -192,7 +192,7 @@ pub fn diff(
             {
                 if let Some(blocks) = signature.blocks.get(&crc) {
                     let digest = md4(&data[here..here + block_size as usize]);
-                    if let Some(&idx) = blocks.get(&digest[..crypto_hash_size]) {
+                    if let Some(&idx) = blocks.get(&&digest[..crypto_hash_size]) {
                         // match found
                         state.copy(
                             idx as u64 * block_size as u64,
