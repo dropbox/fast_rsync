@@ -19,6 +19,7 @@ mod crc;
 mod diff;
 mod hasher;
 mod md4;
+mod hashmap_variant;
 mod patch;
 mod signature;
 
