@@ -18,8 +18,8 @@ mod consts;
 mod crc;
 mod diff;
 mod hasher;
-mod md4;
 mod hashmap_variant;
+mod md4;
 mod patch;
 mod signature;
 
