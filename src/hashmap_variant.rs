@@ -29,7 +29,7 @@ where
         let (new_state, ret) = match old_state {
             Self::Empty => (Self::Single(key, val), None),
             Self::Single(old_key, old_val) => {
-                let mut map = Box::new(HashMap::new());
+                let mut map = Box::new(HashMap::with_capacity(2));
                 map.insert(key, val);
                 let ret = map.insert(old_key, old_val);
                 (Self::TwoOrMore(map), ret)
