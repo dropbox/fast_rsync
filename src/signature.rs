@@ -101,7 +101,7 @@ impl<'a> Signature<'a> {
             storage = rest;
 
             crypto_hash.copy_from_slice(&md4_hash[..crypto_hash.len()]);
-            let crc = Crc::new().update(&block);
+            let crc = Crc::new().update(block);
             blocks.push(BlockSignature { crc, crypto_hash });
         }
         Signature {

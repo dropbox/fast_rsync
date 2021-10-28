@@ -82,13 +82,7 @@ fn calculate_signature(c: &mut Criterion) {
     group.finish();
 }
 
-fn bench_diff(
-    c: &mut Criterion,
-    name: &str,
-    data: &[u8],
-    new_data: &Vec<u8>,
-    allow_librsync: bool,
-) {
+fn bench_diff(c: &mut Criterion, name: &str, data: &[u8], new_data: &[u8], allow_librsync: bool) {
     let mut signature = Vec::new();
     Signature::calculate(
         data,
@@ -120,12 +114,8 @@ fn bench_diff(
             |b, new_data| {
                 b.iter(|| {
                     let mut out = Vec::new();
-                    librsync::whole::delta(
-                        &mut black_box(&new_data[..]),
-                        &mut &signature[..],
-                        &mut out,
-                    )
-                    .unwrap();
+                    librsync::whole::delta(&mut black_box(new_data), &mut &signature[..], &mut out)
+                        .unwrap();
                     out
                 })
             },

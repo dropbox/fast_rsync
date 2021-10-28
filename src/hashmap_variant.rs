@@ -67,7 +67,7 @@ where
         match self {
             Self::Single(key, val) => {
                 if needle == key {
-                    Some(&val)
+                    Some(val)
                 } else {
                     None
                 }

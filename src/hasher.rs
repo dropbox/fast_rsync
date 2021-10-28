@@ -43,6 +43,8 @@ impl Hasher for CrcHasher {
 
 pub type BuildCrcHasher = BuildHasherDefault<CrcHasher>;
 
+// Note: derived PartialEq is compatible with this Hash implementation
+#[allow(clippy::derive_hash_xor_eq)]
 impl Hash for Crc {
     // This `#[inline]` is important for performance without LTO - the derived implementation doesn't always get inlined.
     #[inline]
