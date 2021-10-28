@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
+use std::io::{self, Write};
 
 use crate::consts::{
     DELTA_MAGIC, RS_OP_COPY_N1_N1, RS_OP_END, RS_OP_LITERAL_1, RS_OP_LITERAL_N1, RS_OP_LITERAL_N2,
@@ -16,61 +17,92 @@ use crate::signature::{IndexedSignature, SignatureType};
 /// the signature).
 const MAX_CRC_COLLISIONS: u32 = 1024;
 
-/// Indicates that a delta could not be calculated, generally because the
-/// provided signature was invalid or unsupported.
+/// Indicates that a delta could not be calculated
 #[derive(Debug)]
-pub struct DiffError(());
+pub enum DiffError {
+    /// Indicates the signature is invalid or unsupported
+    InvalidSignature,
+    /// Indicates an IO error occured when writing the delta
+    Io(io::Error),
+}
 
 impl fmt::Display for DiffError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("invalid or unsupported signature for diff")
+        match self {
+            Self::InvalidSignature => f.write_str("invalid or unsupported signature for diff"),
+            Self::Io(source) => write!(f, "Encountered IO error when calculating diff: {}", source),
+        }
     }
 }
 
 impl Error for DiffError {}
 
-fn insert_command(len: u64, out: &mut Vec<u8>) {
-    assert!(len != 0);
-    if len <= 64 {
-        out.push(RS_OP_LITERAL_1 + (len - 1) as u8);
-    } else if len <= u8::max_value() as u64 {
-        out.extend_from_slice(&[RS_OP_LITERAL_N1, len as u8]);
-    } else if len <= u16::max_value() as u64 {
-        out.reserve(3);
-        out.push(RS_OP_LITERAL_N2);
-        out.extend_from_slice(&(len as u16).to_be_bytes());
-    } else if len <= u32::max_value() as u64 {
-        out.reserve(5);
-        out.push(RS_OP_LITERAL_N4);
-        out.extend_from_slice(&(len as u32).to_be_bytes());
-    } else {
-        out.reserve(9);
-        out.push(RS_OP_LITERAL_N8);
-        out.extend_from_slice(&len.to_be_bytes());
+impl From<io::Error> for DiffError {
+    fn from(source: io::Error) -> Self {
+        Self::Io(source)
     }
 }
 
-fn copy_command(offset: u64, len: u64, out: &mut Vec<u8>) {
-    fn varint(val: u64, out: &mut Vec<u8>) -> u8 {
+fn insert_command(len: u64, out: &mut impl Write) -> io::Result<()> {
+    assert!(len != 0);
+    if len <= 64 {
+        out.write_all(&[RS_OP_LITERAL_1 + (len - 1) as u8])?;
+    } else if len <= u8::max_value() as u64 {
+        out.write_all(&[RS_OP_LITERAL_N1, len as u8])?;
+    } else if len <= u16::max_value() as u64 {
+        let [v1, v2] = (len as u16).to_be_bytes();
+        out.write_all(&[RS_OP_LITERAL_N2, v1, v2])?;
+    } else if len <= u32::max_value() as u64 {
+        let [v1, v2, v3, v4] = (len as u32).to_be_bytes();
+        out.write_all(&[RS_OP_LITERAL_N4, v1, v2, v3, v4])?;
+    } else {
+        let [v1, v2, v3, v4, v5, v6, v7, v8] = len.to_be_bytes();
+        out.write_all(&[RS_OP_LITERAL_N8, v1, v2, v3, v4, v5, v6, v7, v8])?;
+    }
+
+    Ok(())
+}
+
+fn copy_command(offset: u64, len: u64, out: &mut impl Write) -> io::Result<()> {
+    fn u64_size_class(val: u64) -> u8 {
         if val <= u8::max_value() as u64 {
-            out.push(val as u8);
             0
         } else if val <= u16::max_value() as u64 {
-            out.extend_from_slice(&(val as u16).to_be_bytes());
             1
         } else if val <= u32::max_value() as u64 {
-            out.extend_from_slice(&(val as u32).to_be_bytes());
             2
         } else {
-            out.extend_from_slice(&val.to_be_bytes());
             3
         }
     }
-    let command_offset = out.len();
-    out.push(0); // dummy
-    let offset_len = varint(offset, out);
-    let len_len = varint(len, out);
-    out[command_offset] = RS_OP_COPY_N1_N1 + offset_len * 4 + len_len;
+
+    fn size_class_marker(offset: u64, len: u64) -> u8 {
+        let offset_len = u64_size_class(offset);
+        let len_len = u64_size_class(len);
+
+        RS_OP_COPY_N1_N1 + offset_len * 4 + len_len
+    }
+
+    fn write_varint(val: u64, out: &mut impl Write) -> io::Result<()> {
+        if val <= u8::max_value() as u64 {
+            out.write_all(&[val as u8])?;
+        } else if val <= u16::max_value() as u64 {
+            out.write_all(&(val as u16).to_be_bytes())?;
+        } else if val <= u32::max_value() as u64 {
+            out.write_all(&(val as u32).to_be_bytes())?;
+        } else {
+            out.write_all(&val.to_be_bytes())?;
+        }
+
+        Ok(())
+    }
+
+    let marker = size_class_marker(offset, len);
+    out.write_all(&[marker])?;
+    write_varint(offset, out)?;
+    write_varint(len, out)?;
+
+    Ok(())
 }
 
 struct OutputState {
@@ -79,32 +111,43 @@ struct OutputState {
 }
 
 impl OutputState {
-    fn emit(&mut self, until: usize, data: &[u8], out: &mut Vec<u8>) {
+    fn emit(&mut self, until: usize, data: &[u8], mut out: impl Write) -> io::Result<()> {
         if self.emitted == until {
-            return;
+            return Ok(());
         }
         if let Some((offset, len)) = self.queued_copy {
-            copy_command(offset as u64, len as u64, out);
+            copy_command(offset as u64, len as u64, &mut out)?;
             self.emitted += len as usize;
         }
         if self.emitted < until {
             let to_emit = &data[self.emitted..until];
-            insert_command(to_emit.len() as u64, out);
-            out.extend_from_slice(to_emit);
+            insert_command(to_emit.len() as u64, &mut out)?;
+            out.write_all(to_emit)?;
             self.emitted = until;
         }
+
+        Ok(())
     }
 
-    fn copy(&mut self, offset: u64, len: usize, here: usize, data: &[u8], out: &mut Vec<u8>) {
+    fn copy(
+        &mut self,
+        offset: u64,
+        len: usize,
+        here: usize,
+        data: &[u8],
+        out: &mut impl Write,
+    ) -> io::Result<()> {
         if let Some((queued_offset, queued_len)) = self.queued_copy {
             if self.emitted + queued_len == here && queued_offset + queued_len as u64 == offset {
                 // just extend the copy
                 self.queued_copy = Some((queued_offset, queued_len + len));
-                return;
+                return Ok(());
             }
         }
-        self.emit(here, data, out);
+        self.emit(here, data, out)?;
         self.queued_copy = Some((offset, len));
+
+        Ok(())
     }
 }
 
@@ -120,18 +163,18 @@ impl OutputState {
 pub fn diff(
     signature: &IndexedSignature<'_>,
     data: &[u8],
-    out: &mut Vec<u8>,
+    mut out: impl Write,
 ) -> Result<(), DiffError> {
     let block_size = signature.block_size;
     let crypto_hash_size = signature.crypto_hash_size as usize;
     if let SignatureType::Md4 = signature.signature_type {
         if crypto_hash_size > MD4_SIZE {
-            return Err(DiffError(()));
+            return Err(DiffError::InvalidSignature);
         }
     } else {
-        return Err(DiffError(()));
+        return Err(DiffError::InvalidSignature);
     }
-    out.extend_from_slice(&DELTA_MAGIC.to_be_bytes());
+    out.write_all(&DELTA_MAGIC.to_be_bytes())?;
     let mut state = OutputState {
         emitted: 0,
         queued_copy: None,
@@ -149,15 +192,15 @@ pub fn diff(
             {
                 if let Some(blocks) = signature.blocks.get(&crc) {
                     let digest = md4(&data[here..here + block_size as usize]);
-                    if let Some(&idx) = blocks.get(&digest[..crypto_hash_size]) {
+                    if let Some(&idx) = blocks.get(&&digest[..crypto_hash_size]) {
                         // match found
                         state.copy(
                             idx as u64 * block_size as u64,
                             block_size as usize,
                             here,
                             data,
-                            out,
-                        );
+                            &mut out,
+                        )?;
                         here += block_size as usize;
                         break;
                     }
@@ -177,7 +220,7 @@ pub fn diff(
             );
         }
     }
-    state.emit(data.len(), data, out);
-    out.push(RS_OP_END);
+    state.emit(data.len(), data, &mut out)?;
+    out.write_all(&[RS_OP_END])?;
     Ok(())
 }

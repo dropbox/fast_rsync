@@ -5,6 +5,7 @@ use std::fmt;
 use crate::consts::{BLAKE2_MAGIC, MD4_MAGIC};
 use crate::crc::Crc;
 use crate::hasher::BuildCrcHasher;
+use crate::hashmap_variant::SecondLayerMap;
 use crate::md4::{md4, md4_many, MD4_SIZE};
 
 /// An rsync signature.
@@ -33,7 +34,7 @@ pub struct IndexedSignature<'a> {
     pub(crate) block_size: u32,
     pub(crate) crypto_hash_size: u32,
     /// crc -> crypto hash -> block index
-    pub(crate) blocks: HashMap<Crc, HashMap<&'a [u8], u32>, BuildCrcHasher>,
+    pub(crate) blocks: HashMap<Crc, SecondLayerMap<&'a [u8], u32>, BuildCrcHasher>,
 }
 
 /// The hash type used with within the signature.
@@ -176,7 +177,7 @@ impl<'a> Signature<'a> {
 
     /// Convert a signature to a form suitable for computing deltas.
     pub fn index(&self) -> IndexedSignature<'a> {
-        let mut blocks: HashMap<Crc, HashMap<&[u8], u32>, BuildCrcHasher> =
+        let mut blocks: HashMap<Crc, SecondLayerMap<&[u8], u32>, BuildCrcHasher> =
             HashMap::with_capacity_and_hasher(self.blocks.len(), BuildCrcHasher::default());
         for (idx, block) in self.blocks.iter().enumerate() {
             blocks
@@ -184,6 +185,12 @@ impl<'a> Signature<'a> {
                 .or_default()
                 .insert(block.crypto_hash, idx as u32);
         }
+
+        // Multiple blocks having the same `Crc` value means that the hashmap will reserve more
+        // capacity than needed. This is particularly noticable when `self.blocks` contains a very
+        // large number of values
+        blocks.shrink_to_fit();
+
         IndexedSignature {
             signature_type: self.signature_type,
             block_size: self.block_size,

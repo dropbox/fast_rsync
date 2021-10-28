@@ -4,14 +4,17 @@ const CRC_MAGIC: u16 = 31;
 pub struct Crc(pub u32);
 
 impl Crc {
+    #[inline]
     fn split(self) -> (u16, u16) {
         (self.0 as u16, (self.0 >> 16) as u16)
     }
 
+    #[inline]
     fn combine(s1: u16, s2: u16) -> Crc {
         Crc(s1 as u32 | ((s2 as u32) << 16))
     }
 
+    #[inline]
     pub fn new() -> Crc {
         Crc(0)
     }
@@ -26,6 +29,7 @@ impl Crc {
         Crc::combine(s1, s2)
     }
 
+    #[inline]
     pub fn rotate(self, size: u32, old_byte: u8, new_byte: u8) -> Crc {
         let size = size as u16;
         let old_byte = old_byte as u16;
