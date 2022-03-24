@@ -10,7 +10,7 @@ fn test_signature_creation(data: Vec<u8>, block_size: u32, crypto_hash_size: u32
         &data,
         &mut storage,
         SignatureOptions {
-            block_size: block_size + 1,
+            block_size: block_size.saturating_add(1),
             crypto_hash_size: crypto_hash_size % 16,
         },
     );
