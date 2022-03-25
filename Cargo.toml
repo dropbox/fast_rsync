@@ -21,9 +21,9 @@ packed_simd = { version = "0.3.4", package = "packed_simd_2" }
 
 [dev-dependencies]
 librsync = { git = "https://github.com/goffrie/librsync-rs", rev = "56e7646d133c3174656b66c61f6259d6154a8873", default-features = false }
-quickcheck = { version = "0.9.2", default-features = false }
-quickcheck_macros = "0.9.1"
-rand = "0.7.3"
+quickcheck = { version = "1.0", default-features = false }
+quickcheck_macros = "1.0"
+rand = "0.8"
 criterion = "0.3.1"
 
 [[bench]]
