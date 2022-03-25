@@ -25,7 +25,6 @@ name = "fast_rsync"
 version = "0.1.4-alpha.0"
 dependencies = [
  "arrayref",
- "packed_simd_2",
 ]
 
 [[package]]
@@ -69,12 +68,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "efaa7b300f3b5fe8eb6bf21ce3895e1751d9665086af2d64b42f19701015ff4f"
 
 [[package]]
-name = "libm"
-version = "0.1.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fc7aa29613bd6a620df431842069224d8bc9011086b1db4c0e0cd47fa03ec9a"
-
-[[package]]
 name = "librsync"
 version = "0.2.0"
 source = "git+https://github.com/goffrie/librsync-rs?rev=ab9c427b5b20624fe533ad0247fe0f9c3460245e#ab9c427b5b20624fe533ad0247fe0f9c3460245e"
@@ -100,16 +93,6 @@ checksum = "6585fd95e7bb50d6cc31e20d4cf9afb4e2ba16c5846fc76793f11218da9c475b"
 dependencies = [
  "libc",
  "winapi",
-]
-
-[[package]]
-name = "packed_simd_2"
-version = "0.3.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "defdcfef86dcc44ad208f71d9ff4ce28df6537a4e0d6b0e8e845cb8ca10059a6"
-dependencies = [
- "cfg-if",
- "libm",
 ]
 
 [[package]]
