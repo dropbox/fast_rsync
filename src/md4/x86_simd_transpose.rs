@@ -1,4 +1,4 @@
-//! Utilities for loading and transposing data from memory.
+//! Utilities for loading and transposing data from memory on x86 architectures.
 //! This is useful for SPMD-style operations.
 use arrayref::array_ref;
 

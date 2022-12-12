@@ -6,6 +6,8 @@ use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};
 
 #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
 mod x86_simd_transpose;
+#[cfg(target_arch = "aarch64")]
+mod aarch64_simd_transpose;
 
 pub const MD4_SIZE: usize = 16;
 
@@ -166,7 +168,12 @@ pub fn md4(data: &[u8]) -> [u8; 16] {
 }
 
 mod simd {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
     pub const MAX_LANES: usize = 8;
+    #[cfg(any(target_arch = "aarch64"))]
+    pub const MAX_LANES: usize = 4;
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))]
+    pub const MAX_LANES: usize = 0;
 
     pub struct Md4xN {
         lanes: usize,
@@ -185,17 +192,20 @@ mod simd {
         }
     }
 
-    #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-    mod x86 {
+    #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))]
+    mod real_impl {
         #[cfg(target_arch = "x86")]
         use std::arch::x86 as arch;
         #[cfg(target_arch = "x86_64")]
         use std::arch::x86_64 as arch;
+        #[cfg(target_arch = "aarch64")]
+        use std::arch::aarch64 as arch;
 
         macro_rules! n_lanes {
             (
                 $u32xN:path,
                 $feature:tt,
+                $feature_enabled:expr,
                 load = $load:path,
                 add = $add:path,
                 and = $and:path,
@@ -282,7 +292,7 @@ mod simd {
                 }
 
                 pub fn select() -> Option<Md4xN> {
-                    if is_x86_feature_detected!($feature) {
+                    if $feature_enabled {
                         Some(Md4xN {
                             lanes: LANES,
                             fun: |data| {
@@ -300,6 +310,7 @@ mod simd {
                 );
         }
 
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         mod lanes_4 {
             #[inline(always)]
             unsafe fn splat(x: u32) -> super::arch::__m128i {
@@ -318,6 +329,7 @@ mod simd {
             n_lanes!(
                 super::arch::__m128i,
                 "sse2",
+                is_x86_feature_detected!("sse2"),
                 load = crate::md4::x86_simd_transpose::load_16x4_sse2,
                 add = super::arch::_mm_add_epi32,
                 and = super::arch::_mm_and_si128,
@@ -328,6 +340,7 @@ mod simd {
                 splat = splat,
             );
         }
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         mod lanes_8 {
             #[inline(always)]
             unsafe fn splat(x: u32) -> super::arch::__m256i {
@@ -346,6 +359,7 @@ mod simd {
             n_lanes!(
                 super::arch::__m256i,
                 "avx2",
+                is_x86_feature_detected!("avx2"),
                 load = crate::md4::x86_simd_transpose::load_16x8_avx2,
                 add = super::arch::_mm256_add_epi32,
                 and = super::arch::_mm256_and_si256,
@@ -356,18 +370,54 @@ mod simd {
                 splat = splat,
             );
         }
+        #[cfg(target_arch = "aarch64")]
+        mod lanes_4 {
+            macro_rules! rotate_left {
+                ($x: expr, $shift: expr) => {{
+                    let x = $x;
+                    // (x << shift) | (x >> (32 - shift))
+                    super::arch::vorrq_u32(
+                        super::arch::vshlq_n_u32::<{$shift as i32}>(x),
+                        super::arch::vshrq_n_u32::<{32 - $shift as i32}>(x),
+                    )
+                }};
+            }
+            #[inline(always)]
+            unsafe fn andnot(a: super::arch::uint32x4_t, b: super::arch::uint32x4_t) -> super::arch::uint32x4_t{
+                // "bit clear", order of arguments is reversed compared to Intel
+                super::arch::vbicq_u32(b, a)
+            }
+            n_lanes!(
+                super::arch::uint32x4_t,
+                "neon",
+                std::arch::is_aarch64_feature_detected!("neon"),
+                load = crate::md4::aarch64_simd_transpose::load_16x4,
+                add = super::arch::vaddq_u32,
+                and = super::arch::vandq_u32,
+                or = super::arch::vorrq_u32,
+                andnot = andnot,
+                xor = super::arch::veorq_u32,
+                rol = (rotate_left!),
+                splat = super::arch::vdupq_n_u32,
+            );
+        }
 
         use super::Md4xN;
 
         impl Md4xN {
             /// Returns a SIMD implementation if one is available.
+            #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
             pub fn select() -> Option<Md4xN> {
                 lanes_8::select().or_else(lanes_4::select)
             }
+            #[cfg(target_arch = "aarch64")]
+            pub fn select() -> Option<Md4xN> {
+                lanes_4::select()
+            }
         }
     }
-    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64")))]
-    mod not_x86 {
+    #[cfg(not(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64")))]
+    mod no_simd {
         use super::Md4xN;
 
         impl Md4xN {
@@ -480,6 +530,17 @@ fn tests() {
                 simd_impl.md4(&vec![msg; simd_impl.lanes()])[..simd_impl.lanes()],
                 vec![expected; simd_impl.lanes()][..]
             );
+        }
+        // make sure it also works for unaligned input
+        if msg.len() > 0 {
+            let tail = &msg[1..];
+            let tail_md4 = md4(tail);
+            if let Some(simd_impl) = simd::Md4xN::select() {
+                assert_eq!(
+                    simd_impl.md4(&vec![tail; simd_impl.lanes()])[..simd_impl.lanes()],
+                    vec![tail_md4; simd_impl.lanes()][..]
+                );
+            }
         }
     }
 }
