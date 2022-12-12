@@ -9,7 +9,7 @@ A faster implementation of [librsync](https://github.com/librsync/librsync) in
 pure Rust, using SIMD operations where available. Note that only the legacy MD4
 format is supported, not BLAKE2.
 
-Only x86 and x86-64 architectures are currently supported for SIMD.
+SIMD is currently supported on x86, x86-64, and aarch64 targets.
 
 ## The rsync algorithm
 This crate offers three major APIs:
