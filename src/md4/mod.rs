@@ -4,10 +4,10 @@
 
 use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};
 
-#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-mod x86_simd_transpose;
 #[cfg(target_arch = "aarch64")]
 mod aarch64_simd_transpose;
+#[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+mod x86_simd_transpose;
 
 pub const MD4_SIZE: usize = 16;
 
@@ -194,12 +194,12 @@ mod simd {
 
     #[cfg(any(target_arch = "x86", target_arch = "x86_64", target_arch = "aarch64"))]
     mod real_impl {
+        #[cfg(target_arch = "aarch64")]
+        use std::arch::aarch64 as arch;
         #[cfg(target_arch = "x86")]
         use std::arch::x86 as arch;
         #[cfg(target_arch = "x86_64")]
         use std::arch::x86_64 as arch;
-        #[cfg(target_arch = "aarch64")]
-        use std::arch::aarch64 as arch;
 
         macro_rules! n_lanes {
             (
@@ -377,13 +377,16 @@ mod simd {
                     let x = $x;
                     // (x << shift) | (x >> (32 - shift))
                     super::arch::vorrq_u32(
-                        super::arch::vshlq_n_u32::<{$shift as i32}>(x),
-                        super::arch::vshrq_n_u32::<{32 - $shift as i32}>(x),
+                        super::arch::vshlq_n_u32::<{ $shift as i32 }>(x),
+                        super::arch::vshrq_n_u32::<{ 32 - $shift as i32 }>(x),
                     )
                 }};
             }
             #[inline(always)]
-            unsafe fn andnot(a: super::arch::uint32x4_t, b: super::arch::uint32x4_t) -> super::arch::uint32x4_t{
+            unsafe fn andnot(
+                a: super::arch::uint32x4_t,
+                b: super::arch::uint32x4_t,
+            ) -> super::arch::uint32x4_t {
                 // "bit clear", order of arguments is reversed compared to Intel
                 super::arch::vbicq_u32(b, a)
             }

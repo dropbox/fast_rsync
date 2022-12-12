@@ -47,17 +47,14 @@ fn calculate_signature(c: &mut Criterion) {
         &data,
         |b, data| {
             b.iter(|| {
-                let mut out = Vec::new();
                 Signature::calculate(
                     black_box(data),
-                    &mut Vec::new(),
                     SignatureOptions {
                         block_size: 4096,
                         crypto_hash_size: 8,
                     },
                 )
-                .serialize(&mut out);
-                out
+                .into_serialized();
             })
         },
     );
@@ -89,16 +86,14 @@ fn bench_diff(
     new_data: &Vec<u8>,
     allow_librsync: bool,
 ) {
-    let mut signature = Vec::new();
-    Signature::calculate(
+    let signature = Signature::calculate(
         data,
-        &mut Vec::new(),
         SignatureOptions {
             block_size: 4096,
             crypto_hash_size: 8,
         },
     )
-    .serialize(&mut signature);
+    .into_serialized();
     let mut group = c.benchmark_group(name);
     group.sample_size(15);
     group.bench_with_input(
@@ -106,7 +101,8 @@ fn bench_diff(
         new_data,
         |b, new_data| {
             b.iter(|| {
-                let sig = Signature::deserialize(&signature).unwrap().index();
+                let sig = Signature::deserialize(signature.clone()).unwrap();
+                let sig = sig.index();
                 let mut out = Vec::new();
                 diff(&sig, black_box(new_data), &mut out).unwrap();
                 out
@@ -164,7 +160,6 @@ fn apply_delta(c: &mut Criterion) {
     diff(
         &Signature::calculate(
             &data,
-            &mut Vec::new(),
             SignatureOptions {
                 block_size: 4096,
                 crypto_hash_size: 8,

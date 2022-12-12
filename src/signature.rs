@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 
+use arrayref::array_ref;
+
 use crate::consts::{BLAKE2_MAGIC, MD4_MAGIC};
 use crate::crc::Crc;
 use crate::hasher::BuildCrcHasher;
@@ -13,18 +15,13 @@ use crate::md4::{md4, md4_many, MD4_SIZE};
 /// A signature contains hashed information about a block of data. It is used to compute a delta
 /// against that data.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Signature<'a> {
+pub struct Signature {
     signature_type: SignatureType,
     block_size: u32,
     crypto_hash_size: u32,
-    blocks: Vec<BlockSignature<'a>>,
-}
-
-/// The signature of a single block.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-struct BlockSignature<'a> {
-    crc: Crc,
-    crypto_hash: &'a [u8],
+    // This contains a valid serialized signature which must contain the correct magic for `signature_type`
+    // and a matching `block_size` and `crypto_hash_size`.
+    signature: Vec<u8>,
 }
 
 /// A signature with a block index, suitable for calculating deltas.
@@ -43,6 +40,24 @@ pub struct IndexedSignature<'a> {
 pub(crate) enum SignatureType {
     Md4,
     Blake2,
+}
+
+impl SignatureType {
+    const SIZE: usize = 4;
+    fn from_magic(bytes: [u8; Self::SIZE]) -> Option<Self> {
+        match u32::from_be_bytes(bytes) {
+            BLAKE2_MAGIC => Some(SignatureType::Blake2),
+            MD4_MAGIC => Some(SignatureType::Md4),
+            _ => None,
+        }
+    }
+    fn to_magic(self) -> [u8; Self::SIZE] {
+        match self {
+            SignatureType::Md4 => MD4_MAGIC,
+            SignatureType::Blake2 => BLAKE2_MAGIC,
+        }
+        .to_be_bytes()
+    }
 }
 
 /// Indicates that a signature was not valid.
@@ -68,23 +83,27 @@ pub struct SignatureOptions {
     pub crypto_hash_size: u32,
 }
 
-impl<'a> Signature<'a> {
-    /// Compute an MD4 signature.
-    /// `storage` will be overwritten and the resulting signature will contain
-    /// references into it.
-    pub fn calculate(
-        buf: &[u8],
-        storage: &'a mut Vec<u8>,
-        options: SignatureOptions,
-    ) -> Signature<'a> {
+impl Signature {
+    const HEADER_SIZE: usize = SignatureType::SIZE + 2 * 4; // magic, block_size, then crypto_hash_size
+
+    /// Compute an MD4 signature for the given data.
+    ///
+    /// `options.block_size` must be greater than zero. `options.crypto_hash_size` must be at most 16, the length of an MD4 hash.
+    /// Panics if the provided options are invalid.
+    pub fn calculate(buf: &[u8], options: SignatureOptions) -> Signature {
         assert!(options.block_size > 0);
         assert!(options.crypto_hash_size <= MD4_SIZE as u32);
         let num_blocks = buf.chunks(options.block_size as usize).len();
-        let mut blocks = Vec::with_capacity(num_blocks);
 
-        // Create space in `storage` for our crypto hashes
-        storage.resize(num_blocks * options.crypto_hash_size as usize, 0);
-        let mut storage = storage.as_mut_slice();
+        let signature_type = SignatureType::Md4;
+
+        let mut signature = Vec::with_capacity(
+            Self::HEADER_SIZE + num_blocks * (Crc::SIZE + options.crypto_hash_size as usize),
+        );
+
+        signature.extend_from_slice(&signature_type.to_magic());
+        signature.extend_from_slice(&options.block_size.to_be_bytes());
+        signature.extend_from_slice(&options.crypto_hash_size.to_be_bytes());
 
         // Hash all the blocks (with the CRC as well as MD4)
         let chunks = buf.chunks_exact(options.block_size as usize);
@@ -97,105 +116,83 @@ impl<'a> Signature<'a> {
             Some((remainder, md4(remainder)))
         }) {
             // would be nice to use `chunks_exact_mut`, but it doesn't work for zero sizes
-            let (crypto_hash, rest) = storage.split_at_mut(options.crypto_hash_size as usize);
-            storage = rest;
-
-            crypto_hash.copy_from_slice(&md4_hash[..crypto_hash.len()]);
-            let crc = Crc::new().update(&block);
-            blocks.push(BlockSignature { crc, crypto_hash });
+            let crc = Crc::new().update(block);
+            let crypto_hash = &md4_hash[..options.crypto_hash_size as usize];
+            signature.extend_from_slice(&crc.to_bytes());
+            signature.extend_from_slice(crypto_hash);
         }
         Signature {
             signature_type: SignatureType::Md4,
             block_size: options.block_size,
             crypto_hash_size: options.crypto_hash_size,
-            blocks,
+            signature,
         }
     }
 
     /// Read a binary signature.
-    pub fn deserialize(mut buf: &'a [u8]) -> Result<Signature<'a>, SignatureParseError> {
-        macro_rules! read_n {
-            ($n:expr) => {{
-                let n = $n;
-                if buf.len() < n {
-                    return Err(SignatureParseError(()));
-                }
-                let (prefix, rest) = buf.split_at(n);
-                buf = rest;
-                prefix
-            }};
-        }
-        macro_rules! read_u32 {
-            () => {{
-                let mut b = [0; 4];
-                b.copy_from_slice(read_n!(4));
-                u32::from_be_bytes(b)
-            }};
-        }
-
-        let magic = read_u32!();
-        let signature_type = match magic {
-            MD4_MAGIC => SignatureType::Md4,
-            BLAKE2_MAGIC => SignatureType::Blake2,
-            _ => return Err(SignatureParseError(())),
-        };
-        let block_size = read_u32!();
-        let crypto_hash_size = read_u32!();
-        let block_signature_size = (4 + crypto_hash_size) as usize;
-        if buf.len() % block_signature_size != 0 {
+    pub fn deserialize(signature: Vec<u8>) -> Result<Signature, SignatureParseError> {
+        if signature.len() < Self::HEADER_SIZE {
             return Err(SignatureParseError(()));
         }
-        let mut blocks = Vec::with_capacity(buf.len() % block_signature_size);
-        while !buf.is_empty() {
-            let crc = Crc(read_u32!());
-            let crypto_hash = read_n!(crypto_hash_size as usize);
-            blocks.push(BlockSignature { crc, crypto_hash });
+        let signature_type = SignatureType::from_magic(*array_ref![signature, 0, 4])
+            .ok_or(SignatureParseError(()))?;
+        let block_size = u32::from_be_bytes(*array_ref![signature, 4, 4]);
+        let crypto_hash_size = u32::from_be_bytes(*array_ref![signature, 8, 4]);
+        let block_signature_size = Crc::SIZE + crypto_hash_size as usize;
+        if (signature.len() - Self::HEADER_SIZE) % block_signature_size != 0 {
+            return Err(SignatureParseError(()));
         }
         Ok(Signature {
             signature_type,
             block_size,
             crypto_hash_size,
-            blocks,
+            signature,
         })
     }
 
-    /// Write a signature to the given vector.
-    pub fn serialize(&self, out: &mut Vec<u8>) {
-        out.reserve(12 + (4 + self.crypto_hash_size as usize) * self.blocks.len());
-        let magic = match self.signature_type {
-            SignatureType::Md4 => MD4_MAGIC,
-            SignatureType::Blake2 => BLAKE2_MAGIC,
-        };
-        out.extend_from_slice(&magic.to_be_bytes());
-        out.extend_from_slice(&self.block_size.to_be_bytes());
-        out.extend_from_slice(&self.crypto_hash_size.to_be_bytes());
-        for block in &self.blocks {
-            out.extend_from_slice(&block.crc.0.to_be_bytes());
-            out.extend_from_slice(block.crypto_hash);
-        }
+    /// Get the serialized form of this signature.
+    pub fn serialized(&self) -> &[u8] {
+        &self.signature
+    }
+
+    /// Get ownership of the serialized form of this signature.
+    pub fn into_serialized(self) -> Vec<u8> {
+        self.signature
+    }
+
+    fn blocks(&self) -> impl ExactSizeIterator<Item = (Crc, &[u8])> {
+        self.signature[Self::HEADER_SIZE..]
+            .chunks(Crc::SIZE + self.crypto_hash_size as usize)
+            .map(|b| {
+                (
+                    Crc::from_bytes(*array_ref!(b, 0, Crc::SIZE)),
+                    &b[Crc::SIZE..],
+                )
+            })
     }
 
     /// Convert a signature to a form suitable for computing deltas.
-    pub fn index(&self) -> IndexedSignature<'a> {
-        let mut blocks: HashMap<Crc, SecondLayerMap<&[u8], u32>, BuildCrcHasher> =
-            HashMap::with_capacity_and_hasher(self.blocks.len(), BuildCrcHasher::default());
-        for (idx, block) in self.blocks.iter().enumerate() {
-            blocks
-                .entry(block.crc)
+    pub fn index(&self) -> IndexedSignature<'_> {
+        let blocks = self.blocks();
+        let mut block_index: HashMap<Crc, SecondLayerMap<&[u8], u32>, BuildCrcHasher> =
+            HashMap::with_capacity_and_hasher(blocks.len(), BuildCrcHasher::default());
+        for (idx, (crc, crypto_hash)) in blocks.enumerate() {
+            block_index
+                .entry(crc)
                 .or_default()
-                .insert(block.crypto_hash, idx as u32);
+                .insert(crypto_hash, idx as u32);
         }
 
         // Multiple blocks having the same `Crc` value means that the hashmap will reserve more
         // capacity than needed. This is particularly noticable when `self.blocks` contains a very
         // large number of values
-        blocks.shrink_to_fit();
+        block_index.shrink_to_fit();
 
         IndexedSignature {
             signature_type: self.signature_type,
             block_size: self.block_size,
             crypto_hash_size: self.crypto_hash_size,
-            blocks,
+            blocks: block_index,
         }
     }
 }

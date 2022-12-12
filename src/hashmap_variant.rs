@@ -15,7 +15,7 @@ use std::{collections::HashMap, hash::Hash, mem};
 /// map for the common case of a single entry while [`Box`]ing the fallback of two or more entries.
 ///
 /// With this the current use case of `SecondLayerMap<&[u8], u32>` takes up 24 bytes on 64-bit
-/// systems while `HashMap<&[u8, u32>` takes 48. Beyond that a [`SecondLayerMap`] consists of just
+/// systems while `HashMap<&[u8], u32>` takes 48. Beyond that a [`SecondLayerMap`] consists of just
 /// a match and an if
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum SecondLayerMap<K, V>
@@ -67,7 +67,7 @@ where
         match self {
             Self::Single(key, val) => {
                 if needle == key {
-                    Some(&val)
+                    Some(val)
                 } else {
                     None
                 }
