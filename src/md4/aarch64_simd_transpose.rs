@@ -4,11 +4,7 @@
 
 use arrayref::array_ref;
 
-use std::arch::aarch64::{
-    uint32x4_t,
-    vtrnq_u32,
-    vzipq_u32,
-};
+use std::arch::aarch64::{uint32x4_t, vtrnq_u32, vzipq_u32};
 
 #[inline(always)]
 /// Loads four u32s (little-endian), potentially unaligned
@@ -31,12 +27,7 @@ unsafe fn load_transpose4(data: [&[u8; 16]; 4]) -> [uint32x4_t; 4] {
     // [[data[0][0], data[1][0], data[2][0], data[3][0]], [data[0][2], data[1][2], data[2][2], data[3][2]]]
     let zip02 = vzipq_u32(tr02.0, tr13.0);
     let zip13 = vzipq_u32(tr02.1, tr13.1);
-    [
-        zip02.0,
-        zip13.0,
-        zip02.1,
-        zip13.1,
-    ]
+    [zip02.0, zip13.0, zip02.1, zip13.1]
 }
 
 macro_rules! get_blocks {
@@ -60,7 +51,7 @@ fn test_transpose() {
     for lane in 0..4 {
         for i in 0..16 {
             let value = (lane * 16 + i) as u32;
-            input[lane][i*4..i*4+4].copy_from_slice(&value.to_le_bytes());
+            input[lane][i * 4..i * 4 + 4].copy_from_slice(&value.to_le_bytes());
         }
     }
     unsafe {

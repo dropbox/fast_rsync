@@ -4,6 +4,18 @@ const CRC_MAGIC: u16 = 31;
 pub struct Crc(pub u32);
 
 impl Crc {
+    pub const SIZE: usize = 4;
+
+    #[inline]
+    pub fn to_bytes(self) -> [u8; Self::SIZE] {
+        self.0.to_be_bytes()
+    }
+
+    #[inline]
+    pub fn from_bytes(b: [u8; Self::SIZE]) -> Self {
+        Crc(u32::from_be_bytes(b))
+    }
+
     #[inline]
     fn split(self) -> (u16, u16) {
         (self.0 as u16, (self.0 >> 16) as u16)
