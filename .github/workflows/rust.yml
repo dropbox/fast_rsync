@@ -2,16 +2,45 @@ name: Rust
 
 on: [push]
 
+env:
+  # make cargo magically go faster
+  CARGO_REGISTRIES_CRATES_IO_PROTOCOL: sparse
+
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v2
     - name: Run tests
       run: cargo test --all-targets
     - name: Run tests in release mode
       run: cargo test --all-targets --release
+
+  build-i686:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install cross
+      run: cargo install cross --git https://github.com/cross-rs/cross
+    - name: Run tests (i686)
+      run: cross test --all-targets --target i686-unknown-linux-gnu
+    - name: Run tests in release mode (i686)
+      run: cross test --all-targets --target i686-unknown-linux-gnu --release
+
+  build-aarch64:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install cross
+      run: cargo install cross --git https://github.com/cross-rs/cross
+    - name: Run tests (aarch64)
+      run: cross test --all-targets --target aarch64-unknown-linux-gnu
+    - name: Run tests in release mode (aarch64)
+      run: cross test --all-targets --target aarch64-unknown-linux-gnu --release
+
+  fuzzer:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
     - name: Build fuzzer
       run: cd fuzz; cargo test

@@ -8,5 +8,5 @@ publish = false
 [dependencies]
 fast_rsync = { path = ".." }
 honggfuzz = "0.5.54"
-librsync = { git = "https://github.com/goffrie/librsync-rs", rev = "56e7646d133c3174656b66c61f6259d6154a8873", default-features = false }
+librsync = { git = "https://github.com/goffrie/librsync-rs", rev = "e2e4b06022d889e020c439f2dc92ea2fec0e483e", default-features = false }
 rand = { version = "0.8", features = ["small_rng"] }

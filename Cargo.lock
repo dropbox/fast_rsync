@@ -273,7 +273,7 @@ checksum = "efaa7b300f3b5fe8eb6bf21ce3895e1751d9665086af2d64b42f19701015ff4f"
 [[package]]
 name = "librsync"
 version = "0.2.1"
-source = "git+https://github.com/goffrie/librsync-rs?rev=56e7646d133c3174656b66c61f6259d6154a8873#56e7646d133c3174656b66c61f6259d6154a8873"
+source = "git+https://github.com/goffrie/librsync-rs?rev=e2e4b06022d889e020c439f2dc92ea2fec0e483e#e2e4b06022d889e020c439f2dc92ea2fec0e483e"
 dependencies = [
  "libc",
  "librsync-sys",
@@ -282,7 +282,7 @@ dependencies = [
 [[package]]
 name = "librsync-sys"
 version = "0.1.2"
-source = "git+https://github.com/goffrie/librsync-rs?rev=56e7646d133c3174656b66c61f6259d6154a8873#56e7646d133c3174656b66c61f6259d6154a8873"
+source = "git+https://github.com/goffrie/librsync-rs?rev=e2e4b06022d889e020c439f2dc92ea2fec0e483e#e2e4b06022d889e020c439f2dc92ea2fec0e483e"
 dependencies = [
  "cc",
  "libc",
