@@ -1,6 +1,6 @@
 [package]
 name = "fast_rsync"
-version = "0.1.4"
+version = "0.2.0"
 authors = ["Dropbox Engineering", "bacher09, Artyom Pavlov (RustCrypto/hashes/MD4)"]
 license = "Apache-2.0"
 description = "An optimized implementation of librsync in pure Rust."
