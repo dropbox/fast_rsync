@@ -23,7 +23,7 @@ librsync = { git = "https://github.com/goffrie/librsync-rs", rev = "e2e4b06022d8
 quickcheck = { version = "1.0", default-features = false }
 quickcheck_macros = "1.0"
 rand = "0.8"
-criterion = "0.3.1"
+criterion = { version = "0.4", default-features = false }
 
 [[bench]]
 name = "rsync_bench"
